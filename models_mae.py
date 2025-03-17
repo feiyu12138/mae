@@ -220,9 +220,9 @@ class MaskedAutoencoderViT(nn.Module):
         return loss, pred, mask
 
 
-def mae_vit_tiny_img32_patch16_dec512d8b(**kwargs): # https://github.com/facebookresearch/deit/blob/7e160fe43f0252d17191b71cbb5826254114ea5b/models.py#L63
+def mae_vit_tiny_img32_patch4_dec512d8b(**kwargs): # https://github.com/facebookresearch/deit/blob/7e160fe43f0252d17191b71cbb5826254114ea5b/models.py#L63
     model = MaskedAutoencoderViT(
-        img_size=32, patch_size=16, embed_dim=192, depth=12, num_heads=3,
+        img_size=32, patch_size=4, embed_dim=192, depth=12, num_heads=3,
         decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
         mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
     return model
@@ -230,6 +230,13 @@ def mae_vit_tiny_img32_patch16_dec512d8b(**kwargs): # https://github.com/faceboo
 def mae_vit_base_patch16_dec512d8b(**kwargs):
     model = MaskedAutoencoderViT(
         patch_size=16, embed_dim=768, depth=12, num_heads=12,
+        decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
+        mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+    return model
+
+def mae_vit_base_img32_patch4_dec512d8b(**kwargs):
+    model = MaskedAutoencoderViT(
+        img_size=32, patch_size=4, embed_dim=768, depth=12, num_heads=12,
         decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
         mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
     return model

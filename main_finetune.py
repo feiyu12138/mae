@@ -23,14 +23,14 @@ from torch.utils.tensorboard import SummaryWriter
 
 import timm
 
-assert timm.__version__ == "0.3.2" # version check
+assert timm.__version__ == "0.4.12" # version check
 from timm.models.layers import trunc_normal_
 from timm.data.mixup import Mixup
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
 
 import util.lr_decay as lrd
 import util.misc as misc
-from util.datasets import build_dataset
+from util.datasets import build_dataset, build_dataset_cifar10
 from util.pos_embed import interpolate_pos_embed
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 
@@ -170,8 +170,8 @@ def main(args):
 
     cudnn.benchmark = True
 
-    dataset_train = build_dataset(is_train=True, args=args)
-    dataset_val = build_dataset(is_train=False, args=args)
+    dataset_train = build_dataset_cifar10(is_train=True, args=args)
+    dataset_val = build_dataset_cifar10(is_train=False, args=args)
 
     if True:  # args.distributed:
         num_tasks = misc.get_world_size()

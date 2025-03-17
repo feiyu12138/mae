@@ -25,7 +25,7 @@ import torchvision.datasets as datasets
 
 import timm
 
-assert timm.__version__ == "0.3.2" # version check
+assert timm.__version__ == "0.4.12" # version check
 from timm.models.layers import trunc_normal_
 
 import util.misc as misc
@@ -130,17 +130,19 @@ def main(args):
 
     # linear probe: weak augmentation
     transform_train = transforms.Compose([
-            RandomResizedCrop(224, interpolation=3),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+        transforms.RandomCrop(32, padding=4),  # Randomly crop with padding
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])  # CIFAR-10 normalization
+    ])
+
     transform_val = transforms.Compose([
-            transforms.Resize(256, interpolation=3),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
-    dataset_train = datasets.ImageFolder(os.path.join(args.data_path, 'train'), transform=transform_train)
-    dataset_val = datasets.ImageFolder(os.path.join(args.data_path, 'val'), transform=transform_val)
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])  # CIFAR-10 normalization
+    ])
+
+    dataset_train = datasets.CIFAR10(root=args.data_path, train=True, transform=transform_train, download=True)
+    dataset_val = datasets.CIFAR10(root=args.data_path, train=False, transform=transform_val, download=True)
     print(dataset_train)
     print(dataset_val)
 
