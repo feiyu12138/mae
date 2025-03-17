@@ -1,0 +1,5 @@
+torch==1.13.1
+torchvision
+timm==0.4.12 # https://github.com/facebookresearch/deit/issues/206
+tensorboard
+six

@@ -24,7 +24,7 @@ import torchvision.datasets as datasets
 
 import timm
 
-assert timm.__version__ == "0.3.2"  # version check
+assert timm.__version__ == "0.4.12"  # updating version check
 import timm.optim.optim_factory as optim_factory
 
 import util.misc as misc
@@ -121,11 +121,11 @@ def main(args):
 
     # simple augmentation
     transform_train = transforms.Compose([
-            transforms.RandomResizedCrop(args.input_size, scale=(0.2, 1.0), interpolation=3),  # 3 is bicubic
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
-    dataset_train = datasets.ImageFolder(os.path.join(args.data_path, 'train'), transform=transform_train)
+        transforms.RandomCrop(32, padding=4),  # Standard for CIFAR-10
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])]) # transformation for CIFAR10
+    dataset_train = datasets.CIFAR10(root=args.data_path, train=True, download=True, transform=transform_train) # CIFAR 10
     print(dataset_train)
 
     if True:  # args.distributed:
