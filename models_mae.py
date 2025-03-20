@@ -80,7 +80,7 @@ class MaskedAutoencoderViT(nn.Module):
             param.requires_grad = False
         self.target_encoder.selected_layer = selected_layer
     
-    def update_target_encoder(self):
+    def update_target_encoder(self,model=None):
         """
         Replaces the target encoder with the current model's encoder.
 
@@ -92,7 +92,10 @@ class MaskedAutoencoderViT(nn.Module):
             target_model (nn.Module): Updated target encoder.
         """
         print("Updating target encoder")
-        self.target_encoder.blocks = copy.deepcopy(self.blocks)  # Directly copy the current model as the new target encoder
+        if model is None:
+            self.target_encoder.blocks = copy.deepcopy(self.blocks)  # Directly copy the current model as the new target encoder
+        else:
+            self.target_encoder.blocks = copy.deepcopy(model.blocks)  # Directly copy the current model as the new target encoder
         for param in self.target_encoder.parameters():
             param.requires_grad = False
 
