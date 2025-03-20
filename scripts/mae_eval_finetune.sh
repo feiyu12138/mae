@@ -1,7 +1,7 @@
 #!/bin/bash
 
 BATCH_SIZE=128
-PRETRAIN_CHKPT=checkpoints/mae_pretrain/checkpoint-199.pth
+PRETRAIN_CKPT=checkpoints/mae_pretrain/checkpoint-199.pth
 BLR=1e-3 # follow vit-base
 EPOCHS=100
 MODEL=vit_tiny_img32_patch16
@@ -27,7 +27,7 @@ python -m torch.distributed.launch \
     --model $MODEL --cls_token \
     --input_size $INPUT_SIZE \
     --nb_classes $NUM_CLASSES \
-    --finetune $PRETRAIN_CHKPT \
+    --finetune $PRETRAIN_CKPT \
     --data_path $DATA \
     --epochs $EPOCHS \
     --blr $BLR \

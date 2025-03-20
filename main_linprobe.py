@@ -89,6 +89,8 @@ def get_args_parser():
     parser.add_argument('--seed', default=0, type=int)
     parser.add_argument('--resume', default='',
                         help='resume from checkpoint')
+    parser.add_argument('--save_freq', default=20, type=int,
+                        help='save frequency')
 
     parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
                         help='start epoch')
@@ -279,7 +281,7 @@ def main(args):
             log_writer=log_writer,
             args=args
         )
-        if args.output_dir:
+        if args.output_dir and (epoch % args.save_freq == 0 or epoch == args.epochs - 1):
             misc.save_model(
                 args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
                 loss_scaler=loss_scaler, epoch=epoch)

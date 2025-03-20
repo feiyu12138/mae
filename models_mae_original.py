@@ -18,8 +18,6 @@ from timm.models.vision_transformer import PatchEmbed, Block
 
 from util.pos_embed import get_2d_sincos_pos_embed
 
-import copy
-
 
 class MaskedAutoencoderViT(nn.Module):
     """ Masked Autoencoder with VisionTransformer backbone
@@ -27,7 +25,7 @@ class MaskedAutoencoderViT(nn.Module):
     def __init__(self, img_size=224, patch_size=16, in_chans=3,
                  embed_dim=1024, depth=24, num_heads=16,
                  decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
-                 mlp_ratio=4., norm_layer=nn.LayerNorm, norm_pix_loss=False, decode_intermediate_feature=False):
+                 mlp_ratio=4., norm_layer=nn.LayerNorm, norm_pix_loss=False):
         super().__init__()
 
         # --------------------------------------------------------------------------
@@ -57,45 +55,12 @@ class MaskedAutoencoderViT(nn.Module):
             for i in range(decoder_depth)])
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
-        if decode_intermediate_feature == False:
-            self.decoder_pred = nn.Linear(decoder_embed_dim, patch_size**2 * in_chans, bias=True) # decoder to patch
-        else:
-            self.decoder_pred = nn.Linear(decoder_embed_dim, embed_dim, bias=True)
+        self.decoder_pred = nn.Linear(decoder_embed_dim, patch_size**2 * in_chans, bias=True) # decoder to patch
         # --------------------------------------------------------------------------
 
         self.norm_pix_loss = norm_pix_loss
 
         self.initialize_weights()
-
-    def set_target_encoder(self, target_encoder,selected_layer):
-        """
-        Set the target encoder used for bootstrapping.
-
-        Args:
-            target_encoder (nn.Module): The target encoder used for bootstrapping.
-        """
-        self.target_encoder = target_encoder
-        # target encoder need no grad
-        for param in self.target_encoder.parameters():
-            param.requires_grad = False
-        self.target_encoder.selected_layer = selected_layer
-    
-    def update_target_encoder(self):
-        """
-        Replaces the target encoder with the current model's encoder.
-
-        Args:
-            model (nn.Module): The current MAE model (MAE-k).
-            target_model (nn.Module): The target encoder used for bootstrapping.
-
-        Returns:
-            target_model (nn.Module): Updated target encoder.
-        """
-        print("Updating target encoder")
-        self.target_encoder.blocks = copy.deepcopy(self.blocks)  # Directly copy the current model as the new target encoder
-        for param in self.target_encoder.parameters():
-            param.requires_grad = False
-
 
     def initialize_weights(self):
         # initialization
@@ -182,15 +147,13 @@ class MaskedAutoencoderViT(nn.Module):
 
         return x_masked, mask, ids_restore
 
-    def forward_encoder(self, x, mask_ratio, return_intermediate=False, selected_layer=None):
-        if return_intermediate:
-            assert selected_layer is not None, "selected_layer must be specified for intermediate output"
+    def forward_encoder(self, x, mask_ratio):
         # embed patches
         x = self.patch_embed(x)
 
         # add pos embed w/o cls token
         x = x + self.pos_embed[:, 1:, :]
-        x_unmasked = x
+
         # masking: length -> length * mask_ratio
         x, mask, ids_restore = self.random_masking(x, mask_ratio)
 
@@ -198,15 +161,12 @@ class MaskedAutoencoderViT(nn.Module):
         cls_token = self.cls_token + self.pos_embed[:, :1, :]
         cls_tokens = cls_token.expand(x.shape[0], -1, -1)
         x = torch.cat((cls_tokens, x), dim=1)
+
         # apply Transformer blocks
-        for idx, blk in enumerate(self.blocks):
+        for blk in self.blocks:
             x = blk(x)
-            x_unmasked = blk(x_unmasked)
-            if return_intermediate and selected_layer is not None and idx == selected_layer:
-                intermediate_output = x_unmasked
         x = self.norm(x)
-        if return_intermediate:
-            return x, mask, ids_restore, intermediate_output
+
         return x, mask, ids_restore
 
     def forward_decoder(self, x, ids_restore):
@@ -252,39 +212,11 @@ class MaskedAutoencoderViT(nn.Module):
 
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
-    
-    def forward_loss_intermediate_feature(self, imgs, pred, mask, target_intermediate):
-        """
-        imgs: [N, 3, H, W]
-        pred: [N, L, p*p*3]
-        mask: [N, L], 0 is keep, 1 is remove, 
-        target_intermediate: [N, L, D] intermediate feature
-        """
-        target = target_intermediate
-        if self.norm_pix_loss:
-            mean = target.mean(dim=-1, keepdim=True)
-            var = target.var(dim=-1, keepdim=True)
-            target = (target - mean) / (var + 1.e-6)**.5
-        loss = (pred - target) ** 2
-        loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
-
-        loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
-        return loss
 
     def forward(self, imgs, mask_ratio=0.75):
-        if self.target_encoder is not None:
-            with torch.no_grad():
-                try:
-                    target_latent, _, _, target_intermediate = self.target_encoder.forward_encoder(imgs, mask_ratio, return_intermediate=True, 
-                                                                                               selected_layer=self.target_encoder.selected_layer)
-                except:
-                    from ipdb import set_trace; set_trace()
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio)
         pred = self.forward_decoder(latent, ids_restore)  # [N, L, p*p*3]
-        if self.target_encoder is not None:
-            loss = self.forward_loss_intermediate_feature(imgs, pred, mask, target_intermediate)
-        else:
-            loss = self.forward_loss(imgs, pred, mask)
+        loss = self.forward_loss(imgs, pred, mask)
         return loss, pred, mask
 
 
