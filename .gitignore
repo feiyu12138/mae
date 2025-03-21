@@ -3,4 +3,5 @@ data
 log
 tensorboard
 tempt
-scripts
+scripts_
+
