@@ -1,20 +1,21 @@
 #!/bin/bash
-
-BATCH_SIZE=1024
-PRETRAIN_CKPT=checkpoints/mae_pretrain/checkpoint-199.pth
-BLR=1e-3 # follow vit-base
+LAYER=11
+TIMES=5
+EMA_WARMUP=1
+EMA_DECAY=0.99
+BATCH_SIZE=16384
+PRETRAIN_CKPT=checkpoints/bmae_pretrain/checkpoint-199.pth
+BLR=0.1
 EPOCHS=100
 MODEL=vit_tiny_img32_patch4
-INPUT_SIZE=32
 NUM_CLASSES=10
 
 DATA=data
-LOG=tensorboard/mae_finetune
-OUTPUT=checkpoints/mae_finetune
+LOG=tensorboard/bmae_linprobe
+OUTPUT=checkpoints/bmae_linprobe
 
 NUM_GPUS=8
-MASTER_PORT=29500  # Change if needed
-SMOOTHING=0.0
+MASTER_PORT=29522  # Change if needed
 
 # Compute per-GPU batch size
 PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
@@ -22,18 +23,16 @@ PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
 python -m torch.distributed.launch \
     --nproc_per_node=$NUM_GPUS \
     --master_port=$MASTER_PORT \
-    main_finetune.py \
+    main_linprobe.py \
     --batch_size $PER_GPU_BATCH_SIZE \
     --model $MODEL --cls_token \
-    --input_size $INPUT_SIZE \
+    --finetune ${PRETRAIN_CKPT} \
     --nb_classes $NUM_CLASSES \
-    --finetune $PRETRAIN_CKPT \
     --data_path $DATA \
     --epochs $EPOCHS \
     --blr $BLR \
-    --weight_decay 0.05 \
+    --weight_decay 0.0 \
     --log_dir $LOG \
-    --smoothing $SMOOTHING \
     --output_dir $OUTPUT \
-    1> log/mae_finetune/base_pretrain_finetune.log \
-    2> log/mae_finetune/base_pretrain_finetune.err
+    1> log/bmae_linprobe/bmae_pretrain.log \
+    2> log/bmae_linprobe/bmae_pretrain.err

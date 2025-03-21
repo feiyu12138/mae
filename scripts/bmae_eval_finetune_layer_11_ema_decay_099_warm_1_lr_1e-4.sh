@@ -1,19 +1,22 @@
 #!/bin/bash
-
+LAYER=11
+TIMES=5
+EMA_WARMUP=1
+EMA_DECAY=0.99
 BATCH_SIZE=1024
-PRETRAIN_CKPT=checkpoints/mae_pretrain/checkpoint-199.pth
-BLR=1e-3 # follow vit-base
+PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}/checkpoint-199.pth
+BLR=1e-4 # follow vit-base
 EPOCHS=100
 MODEL=vit_tiny_img32_patch4
 INPUT_SIZE=32
 NUM_CLASSES=10
 
 DATA=data
-LOG=tensorboard/mae_finetune
-OUTPUT=checkpoints/mae_finetune
+LOG=tensorboard/bmae_finetune_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_lr_1e-4
+OUTPUT=checkpoints/bmae_finetune_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_lr_1e-4
 
 NUM_GPUS=8
-MASTER_PORT=29500  # Change if needed
+MASTER_PORT=29536  # Change if needed
 SMOOTHING=0.0
 
 # Compute per-GPU batch size
@@ -35,5 +38,5 @@ python -m torch.distributed.launch \
     --log_dir $LOG \
     --smoothing $SMOOTHING \
     --output_dir $OUTPUT \
-    1> log/mae_finetune/base_pretrain_finetune.log \
-    2> log/mae_finetune/base_pretrain_finetune.err
+    1> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_lr_1e-4_linprobe.log \
+    2> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_lr_1e-4_linprobe.err
