@@ -1,0 +1,4878 @@
+diff --git a/.gitignore b/.gitignore
+deleted file mode 100644
+index 66d8bac..0000000
+--- a/.gitignore
++++ /dev/null
+@@ -1,5 +0,0 @@
+-checkpoints
+-data
+-log
+-tensorboard
+-tempt
+diff --git a/Bmae_eval_finetune.sh b/Bmae_eval_finetune.sh
+deleted file mode 100644
+index 50d5dd8..0000000
+--- a/Bmae_eval_finetune.sh
++++ /dev/null
+@@ -1,42 +0,0 @@
+-#!/bin/bash
+-LAYER=11
+-TIMES=5
+-EMA_WARMUP=1
+-EMA_DECAY=0.99
+-BATCH_SIZE=1024
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_finetune
+-OUTPUT=checkpoints/bmae_finetune
+-
+-NUM_GPUS=8
+-MASTER_PORT=29526  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_finetune/bmae_pretrain.log \
+-    2> log/bmae_finetune/bmae_pretrain.err
+\ No newline at end of file
+diff --git a/Bmae_eval_linear.sh b/Bmae_eval_linear.sh
+deleted file mode 100644
+index 24ffac5..0000000
+--- a/Bmae_eval_linear.sh
++++ /dev/null
+@@ -1,38 +0,0 @@
+-#!/bin/bash
+-LAYER=11
+-TIMES=5
+-EMA_WARMUP=1
+-EMA_DECAY=0.99
+-BATCH_SIZE=16384
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain/checkpoint-199.pth
+-BLR=0.1
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_linprobe
+-OUTPUT=checkpoints/bmae_linprobe
+-
+-NUM_GPUS=8
+-MASTER_PORT=29522  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_linprobe.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --finetune ${PRETRAIN_CKPT} \
+-    --nb_classes $NUM_CLASSES \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.0 \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_linprobe/bmae_pretrain.log \
+-    2> log/bmae_linprobe/bmae_pretrain.err
+diff --git a/Bmae_train.sh b/Bmae_train.sh
+deleted file mode 100644
+index 43d859f..0000000
+--- a/Bmae_train.sh
++++ /dev/null
+@@ -1,47 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-EMA_WARMUP=1
+-EMA_DECAY=0.99
+-ACCUM_ITER=1
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-BASE_MODEL=checkpoints/mae_pretrain/checkpoint-199.pth
+-LAYER=11
+-LOG=tensorboard/bmae_pretrain
+-OUTPUT=checkpoints/bmae_pretrain
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29524  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-# Launch Distributed Data Parallel (DDP) training
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_pretrain_bootstrap_ema.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --base_model $BASE_MODEL \
+-    --select_layer $LAYER \
+-    --model_ema \
+-    --model_ema_decay $EMA_DECAY \
+-    --model_ema_dynamic \
+-    --ema_warmup_epochs $EMA_WARMUP \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --norm_pix_loss \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_train/pretrain_bootstrap.log \
+-    2> log/bmae_train/pretrain_bootstrap.err
+diff --git a/INSTALL.md b/INSTALL.md
+deleted file mode 100644
+index 6110bbf..0000000
+--- a/INSTALL.md
++++ /dev/null
+@@ -1,43 +0,0 @@
+-# Bootstrapped MAE
+-
+-This repository implements standard MAE and our bootstrapped MAE variant with feature-level reconstruction on CIFAR-10.
+-
+-## 🚀 Getting Started
+-
+-### 1. Create Conda Environment
+-```bash
+-conda create -n mae python=3.8 -y
+-conda activate mae
+-```
+-### 2. Install Dependencies
+-```bash
+-pip install -r requirements.txt
+-```
+-### 3. Prepare Logging Directory
+-```bash
+-mkdir log
+-cd log
+-mkdir bmae_pretrain bmae_linprobe bmae_finetune mae_train mae_linprobe mae_finetune
+-cd ..
+-```
+-
+-## 🏋️‍♂️ Training & Evaluation
+-
+-### 4. Pretrain MAE
+-```bash
+-bash mae_train.sh
+-```
+-### 5. Evaluate MAE (Linear Probe & Finetune)
+-```bash
+-bash mae_eval_linear.sh
+-bash mae_eval_finetune.sh
+-```
+-### 6. Train Bootstrapped MAE
+-```bash
+-bash Bmae_train.sh
+-```
+-### 7. Evaluate Bootstrapped MAE (Linear Probe & Finetune)
+-```bash
+-bash Bmae_eval_linear.sh
+-bash Bmae_eval_finetune.sh
+-```
+diff --git a/__pycache__/engine_finetune.cpython-38.pyc b/__pycache__/engine_finetune.cpython-38.pyc
+deleted file mode 100644
+index 86db0e8..0000000
+Binary files a/__pycache__/engine_finetune.cpython-38.pyc and /dev/null differ
+diff --git a/__pycache__/engine_pretrain.cpython-38.pyc b/__pycache__/engine_pretrain.cpython-38.pyc
+deleted file mode 100644
+index 7a307e7..0000000
+Binary files a/__pycache__/engine_pretrain.cpython-38.pyc and /dev/null differ
+diff --git a/__pycache__/models_mae.cpython-38.pyc b/__pycache__/models_mae.cpython-38.pyc
+deleted file mode 100644
+index 2d7f903..0000000
+Binary files a/__pycache__/models_mae.cpython-38.pyc and /dev/null differ
+diff --git a/__pycache__/models_vit.cpython-38.pyc b/__pycache__/models_vit.cpython-38.pyc
+deleted file mode 100644
+index 50acf45..0000000
+Binary files a/__pycache__/models_vit.cpython-38.pyc and /dev/null differ
+diff --git a/engine_finetune.py b/engine_finetune.py
+index ee44da4..071dd15 100644
+--- a/engine_finetune.py
++++ b/engine_finetune.py
+@@ -51,6 +51,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
+ 
+         if mixup_fn is not None:
+             samples, targets = mixup_fn(samples, targets)
++
+         with torch.cuda.amp.autocast():
+             outputs = model(samples)
+             loss = criterion(outputs, targets)
+diff --git a/mae_eval_finetune.sh b/mae_eval_finetune.sh
+deleted file mode 100644
+index 4b2d5ec..0000000
+--- a/mae_eval_finetune.sh
++++ /dev/null
+@@ -1,39 +0,0 @@
+-#!/bin/bash
+-
+-BATCH_SIZE=1024
+-PRETRAIN_CKPT=checkpoints/mae_pretrain/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/mae_finetune
+-OUTPUT=checkpoints/mae_finetune
+-
+-NUM_GPUS=8
+-MASTER_PORT=29500  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/mae_finetune/base_pretrain_finetune.log \
+-    2> log/mae_finetune/base_pretrain_finetune.err
+\ No newline at end of file
+diff --git a/mae_eval_linear.sh b/mae_eval_linear.sh
+deleted file mode 100644
+index 9a430e9..0000000
+--- a/mae_eval_linear.sh
++++ /dev/null
+@@ -1,35 +0,0 @@
+-#!/bin/bash
+-
+-BATCH_SIZE=16384
+-PRETRAIN_CHKPT=checkpoints/mae_pretrain/checkpoint-199.pth
+-BLR=0.1
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch16
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/mae_linprobe
+-OUTPUT=checkpoints/mae_linprobe
+-
+-NUM_GPUS=8
+-MASTER_PORT=29502  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_linprobe.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --finetune ${PRETRAIN_CHKPT} \
+-    --nb_classes $NUM_CLASSES \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.0 \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/mae_linprobe/base_pretrain_linprobe.log \
+-    2> log/mae_linprobe/base_pretrain_linprobe.err
+diff --git a/mae_train.sh b/mae_train.sh
+deleted file mode 100644
+index 2f52d38..0000000
+--- a/mae_train.sh
++++ /dev/null
+@@ -1,38 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-ACCUM_ITER=1
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-LOG=tensorboard/mae_pretrain
+-OUTPUT=checkpoints/mae_pretrain
+-
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29500  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-# Launch Distributed Data Parallel (DDP) training
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_pretrain.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/mae_train/base_pretrain.log \
+-    2> log/mae_train/base_pretrain.err
+diff --git a/main_finetune.py b/main_finetune.py
+index 9dffa52..c3b3ab7 100644
+--- a/main_finetune.py
++++ b/main_finetune.py
+@@ -23,14 +23,14 @@ from torch.utils.tensorboard import SummaryWriter
+ 
+ import timm
+ 
+-assert timm.__version__ == "0.4.12" # version check
++assert timm.__version__ == "0.3.2" # version check
+ from timm.models.layers import trunc_normal_
+ from timm.data.mixup import Mixup
+ from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
+ 
+ import util.lr_decay as lrd
+ import util.misc as misc
+-from util.datasets import build_dataset, build_dataset_cifar10
++from util.datasets import build_dataset
+ from util.pos_embed import interpolate_pos_embed
+ from util.misc import NativeScalerWithGradNormCount as NativeScaler
+ 
+@@ -131,8 +131,6 @@ def get_args_parser():
+     parser.add_argument('--seed', default=0, type=int)
+     parser.add_argument('--resume', default='',
+                         help='resume from checkpoint')
+-    parser.add_argument('--save_freq', default=20, type=int,
+-                        help='save frequency')
+ 
+     parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
+                         help='start epoch')
+@@ -172,8 +170,8 @@ def main(args):
+ 
+     cudnn.benchmark = True
+ 
+-    dataset_train = build_dataset_cifar10(is_train=True, args=args)
+-    dataset_val = build_dataset_cifar10(is_train=False, args=args)
++    dataset_train = build_dataset(is_train=True, args=args)
++    dataset_val = build_dataset(is_train=False, args=args)
+ 
+     if True:  # args.distributed:
+         num_tasks = misc.get_world_size()
+@@ -319,7 +317,7 @@ def main(args):
+             log_writer=log_writer,
+             args=args
+         )
+-        if args.output_dir and (epoch % args.save_freq == 0 or epoch == args.epochs - 1):
++        if args.output_dir:
+             misc.save_model(
+                 args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+                 loss_scaler=loss_scaler, epoch=epoch)
+diff --git a/main_linprobe.py b/main_linprobe.py
+index 486e8f8..2d3f241 100644
+--- a/main_linprobe.py
++++ b/main_linprobe.py
+@@ -25,7 +25,7 @@ import torchvision.datasets as datasets
+ 
+ import timm
+ 
+-assert timm.__version__ == "0.4.12" # version check
++assert timm.__version__ == "0.3.2" # version check
+ from timm.models.layers import trunc_normal_
+ 
+ import util.misc as misc
+@@ -89,8 +89,6 @@ def get_args_parser():
+     parser.add_argument('--seed', default=0, type=int)
+     parser.add_argument('--resume', default='',
+                         help='resume from checkpoint')
+-    parser.add_argument('--save_freq', default=20, type=int,
+-                        help='save frequency')
+ 
+     parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
+                         help='start epoch')
+@@ -132,19 +130,17 @@ def main(args):
+ 
+     # linear probe: weak augmentation
+     transform_train = transforms.Compose([
+-        transforms.RandomCrop(32, padding=4),  # Randomly crop with padding
+-        transforms.RandomHorizontalFlip(),
+-        transforms.ToTensor(),
+-        transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])  # CIFAR-10 normalization
+-    ])
+-
++            RandomResizedCrop(224, interpolation=3),
++            transforms.RandomHorizontalFlip(),
++            transforms.ToTensor(),
++            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+     transform_val = transforms.Compose([
+-        transforms.ToTensor(),
+-        transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])  # CIFAR-10 normalization
+-    ])
+-
+-    dataset_train = datasets.CIFAR10(root=args.data_path, train=True, transform=transform_train, download=True)
+-    dataset_val = datasets.CIFAR10(root=args.data_path, train=False, transform=transform_val, download=True)
++            transforms.Resize(256, interpolation=3),
++            transforms.CenterCrop(224),
++            transforms.ToTensor(),
++            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
++    dataset_train = datasets.ImageFolder(os.path.join(args.data_path, 'train'), transform=transform_train)
++    dataset_val = datasets.ImageFolder(os.path.join(args.data_path, 'val'), transform=transform_val)
+     print(dataset_train)
+     print(dataset_val)
+ 
+@@ -281,7 +277,7 @@ def main(args):
+             log_writer=log_writer,
+             args=args
+         )
+-        if args.output_dir and (epoch % args.save_freq == 0 or epoch == args.epochs - 1):
++        if args.output_dir:
+             misc.save_model(
+                 args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+                 loss_scaler=loss_scaler, epoch=epoch)
+diff --git a/main_pretrain.py b/main_pretrain.py
+index 2446c5d..58a18c5 100644
+--- a/main_pretrain.py
++++ b/main_pretrain.py
+@@ -24,7 +24,7 @@ import torchvision.datasets as datasets
+ 
+ import timm
+ 
+-assert timm.__version__ == "0.4.12"  # updating version check
++assert timm.__version__ == "0.3.2"  # version check
+ import timm.optim.optim_factory as optim_factory
+ 
+ import util.misc as misc
+@@ -121,11 +121,11 @@ def main(args):
+ 
+     # simple augmentation
+     transform_train = transforms.Compose([
+-        transforms.RandomCrop(32, padding=4),  # Standard for CIFAR-10
+-        transforms.RandomHorizontalFlip(),
+-        transforms.ToTensor(),
+-        transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])]) # transformation for CIFAR10
+-    dataset_train = datasets.CIFAR10(root=args.data_path, train=True, download=True, transform=transform_train) # CIFAR 10
++            transforms.RandomResizedCrop(args.input_size, scale=(0.2, 1.0), interpolation=3),  # 3 is bicubic
++            transforms.RandomHorizontalFlip(),
++            transforms.ToTensor(),
++            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
++    dataset_train = datasets.ImageFolder(os.path.join(args.data_path, 'train'), transform=transform_train)
+     print(dataset_train)
+ 
+     if True:  # args.distributed:
+diff --git a/main_pretrain_bootstrap.py b/main_pretrain_bootstrap.py
+deleted file mode 100644
+index 4a34e7b..0000000
+--- a/main_pretrain_bootstrap.py
++++ /dev/null
+@@ -1,282 +0,0 @@
+-# Copyright (c) Meta Platforms, Inc. and affiliates.
+-# All rights reserved.
+-
+-# This source code is licensed under the license found in the
+-# LICENSE file in the root directory of this source tree.
+-# --------------------------------------------------------
+-# References:
+-# DeiT: https://github.com/facebookresearch/deit
+-# BEiT: https://github.com/microsoft/unilm/tree/master/beit
+-# --------------------------------------------------------
+-import argparse
+-import datetime
+-import json
+-import numpy as np
+-import os
+-import copy
+-import time
+-from pathlib import Path
+-
+-import torch
+-import torch.backends.cudnn as cudnn
+-from torch.utils.tensorboard import SummaryWriter
+-import torchvision.transforms as transforms
+-import torchvision.datasets as datasets
+-import torch.distributed as dist
+-
+-import timm
+-
+-assert timm.__version__ == "0.4.12"  # updating version check
+-import timm.optim.optim_factory as optim_factory
+-
+-import util.misc as misc
+-from util.misc import NativeScalerWithGradNormCount as NativeScaler
+-
+-import models_mae
+-
+-from engine_pretrain import train_one_epoch
+-
+-
+-def get_args_parser():
+-    parser = argparse.ArgumentParser('MAE pre-training', add_help=False)
+-    parser.add_argument('--batch_size', default=64, type=int,
+-                        help='Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus')
+-    parser.add_argument('--epochs', default=400, type=int)
+-    parser.add_argument('--accum_iter', default=1, type=int,
+-                        help='Accumulate gradient iterations (for increasing the effective batch size under memory constraints)')
+-
+-    # Model parameters
+-    parser.add_argument('--model', default='mae_vit_large_patch16', type=str, metavar='MODEL',
+-                        help='Name of model to train')
+-
+-    parser.add_argument('--input_size', default=224, type=int,
+-                        help='images input size')
+-
+-    parser.add_argument('--mask_ratio', default=0.75, type=float,
+-                        help='Masking ratio (percentage of removed patches).')
+-
+-    parser.add_argument('--norm_pix_loss', action='store_true',
+-                        help='Use (per-patch) normalized pixels as targets for computing loss')
+-    parser.set_defaults(norm_pix_loss=False)
+-
+-    # Optimizer parameters
+-    parser.add_argument('--weight_decay', type=float, default=0.05,
+-                        help='weight decay (default: 0.05)')
+-
+-    parser.add_argument('--lr', type=float, default=None, metavar='LR',
+-                        help='learning rate (absolute lr)')
+-    parser.add_argument('--blr', type=float, default=1e-3, metavar='LR',
+-                        help='base learning rate: absolute_lr = base_lr * total_batch_size / 256')
+-    parser.add_argument('--min_lr', type=float, default=0., metavar='LR',
+-                        help='lower lr bound for cyclic schedulers that hit 0')
+-
+-    parser.add_argument('--warmup_epochs', type=int, default=40, metavar='N',
+-                        help='epochs to warmup LR')
+-
+-    # Dataset parameters
+-    parser.add_argument('--data_path', default='/datasets01/imagenet_full_size/061417/', type=str,
+-                        help='dataset path')
+-    parser.add_argument('--base_model', default='./checkpoints',
+-                        help='path to base model')
+-    parser.add_argument('--select_layer', default=6, type=int,
+-                        help='select layer for bootstrap')
+-    parser.add_argument('--bootstrap_times', default=3, type=int,
+-                        help='times for bootstrap')
+-    parser.add_argument('--output_dir', default='./output_dir',
+-                        help='path where to save, empty for no saving')
+-    parser.add_argument('--log_dir', default='./output_dir',
+-                        help='path where to tensorboard log')
+-    parser.add_argument('--device', default='cuda',
+-                        help='device to use for training / testing')
+-    parser.add_argument('--seed', default=0, type=int)
+-    parser.add_argument('--resume', default='',
+-                        help='resume from checkpoint')
+-
+-    parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
+-                        help='start epoch')
+-    parser.add_argument('--num_workers', default=10, type=int)
+-    parser.add_argument('--pin_mem', action='store_true',
+-                        help='Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.')
+-    parser.add_argument('--no_pin_mem', action='store_false', dest='pin_mem')
+-    parser.set_defaults(pin_mem=True)
+-
+-    # distributed training parameters
+-    parser.add_argument('--world_size', default=1, type=int,
+-                        help='number of distributed processes')
+-    parser.add_argument('--local_rank', default=-1, type=int)
+-    parser.add_argument('--dist_on_itp', action='store_true')
+-    parser.add_argument('--dist_url', default='env://',
+-                        help='url used to set up distributed training')
+-
+-    return parser
+-
+-
+-def load_encoder_model(model, checkpoint_path, device='cuda', key_prefix='blocks.'):
+-    """
+-    Load the encoder weights from a base model checkpoint.
+-    
+-    Args:
+-        model (torch.nn.Module): The model to initialize.
+-        checkpoint_path (str): Path to the checkpoint file.
+-        device (str): Device to load the model on (default: 'cuda').
+-        key_prefix (str): Prefix to filter encoder weights (default: 'blocks.').
+-    
+-    Returns:
+-        model (torch.nn.Module): Model with loaded weights.
+-    """
+-    if not os.path.exists(checkpoint_path):
+-        print(f"Checkpoint not found: {checkpoint_path}")
+-        return model
+-
+-    print(f"Loading model checkpoint from {checkpoint_path}...")
+-    checkpoint = torch.load(checkpoint_path, map_location=device)
+-
+-    # Handle models saved with 'module.' prefix (DDP training)
+-    if 'model' in checkpoint:
+-        encoder_state_dict = {k: v for k, v in checkpoint['model'].items() if k.startswith(key_prefix)}
+-    else:
+-        encoder_state_dict = {k: v for k, v in checkpoint.items() if k.startswith(key_prefix)}
+-
+-    new_state_dict = {}
+-    for k, v in encoder_state_dict.items():
+-        new_key = k
+-        if k.startswith("module."):  # Remove DDP prefix
+-            new_key = k[len("module."):]
+-        if key_prefix in new_key:  # Load only encoder weights
+-            new_state_dict[new_key] = v
+-    # Load weights into the model
+-    missing_keys, unexpected_keys = model.load_state_dict(new_state_dict, strict=False)
+-    
+-    print(f"Loaded encoder weights with missing keys: {missing_keys}")
+-    print(f"Unexpected keys: {unexpected_keys}")
+-
+-    return model
+-
+-
+-def main(args):
+-    misc.init_distributed_mode(args)
+-
+-    print('job dir: {}'.format(os.path.dirname(os.path.realpath(__file__))))
+-    print("{}".format(args).replace(', ', ',\n'))
+-
+-    device = torch.device(args.device)
+-
+-    # fix the seed for reproducibility
+-    seed = args.seed + misc.get_rank()
+-    torch.manual_seed(seed)
+-    np.random.seed(seed)
+-
+-    cudnn.benchmark = True
+-
+-    # simple augmentation
+-    transform_train = transforms.Compose([
+-        transforms.RandomCrop(32, padding=4),  # Standard for CIFAR-10
+-        transforms.RandomHorizontalFlip(),
+-        transforms.ToTensor(),
+-        transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])]) # transformation for CIFAR10
+-    dataset_train = datasets.CIFAR10(root=args.data_path, train=True, download=True, transform=transform_train) # CIFAR 10
+-    print(dataset_train)
+-
+-    if True:  # args.distributed:
+-        num_tasks = misc.get_world_size()
+-        global_rank = misc.get_rank()
+-        sampler_train = torch.utils.data.DistributedSampler(
+-            dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
+-        )
+-        print("Sampler_train = %s" % str(sampler_train))
+-    else:
+-        sampler_train = torch.utils.data.RandomSampler(dataset_train)
+-
+-    if global_rank == 0 and args.log_dir is not None:
+-        os.makedirs(args.log_dir, exist_ok=True)
+-        log_writer = SummaryWriter(log_dir=args.log_dir)
+-    else:
+-        log_writer = None
+-
+-    data_loader_train = torch.utils.data.DataLoader(
+-        dataset_train, sampler=sampler_train,
+-        batch_size=args.batch_size,
+-        num_workers=args.num_workers,
+-        pin_memory=args.pin_mem,
+-        drop_last=True,
+-    )
+-    
+-    # define the model
+-    decode_intermediate_feature = args.base_model is not None
+-    model = models_mae.__dict__[args.model](norm_pix_loss=args.norm_pix_loss,decode_intermediate_feature=decode_intermediate_feature)
+-
+-    if args.base_model is not None:
+-        model = load_encoder_model(model, args.base_model, device=device)
+-    model.set_target_encoder(copy.deepcopy(model), args.select_layer)
+-    model.to(device)
+-
+-    model_without_ddp = model
+-    print("Model = %s" % str(model_without_ddp))
+-
+-    eff_batch_size = args.batch_size * args.accum_iter * misc.get_world_size()
+-    
+-    if args.lr is None:  # only base_lr is specified
+-        args.lr = args.blr * eff_batch_size / 256
+-
+-    print("base lr: %.2e" % (args.lr * 256 / eff_batch_size))
+-    print("actual lr: %.2e" % args.lr)
+-
+-    print("accumulate grad iterations: %d" % args.accum_iter)
+-    print("effective batch size: %d" % eff_batch_size)
+-
+-    if args.distributed:
+-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+-        model_without_ddp = model.module
+-    
+-    # following timm: set wd as 0 for bias and norm layers
+-    param_groups = optim_factory.add_weight_decay(model_without_ddp, args.weight_decay)
+-    optimizer = torch.optim.AdamW(param_groups, lr=args.lr, betas=(0.9, 0.95))
+-    print(optimizer)
+-    loss_scaler = NativeScaler()
+-
+-    misc.load_model(args=args, model_without_ddp=model_without_ddp, optimizer=optimizer, loss_scaler=loss_scaler)
+-
+-    print(f"Start training for {args.epochs} epochs")
+-    start_time = time.time()
+-    bootstrap_interval = args.epochs // args.bootstrap_times
+-    for epoch in range(args.start_epoch, args.epochs):
+-        if args.distributed:
+-            data_loader_train.sampler.set_epoch(epoch)
+-        if epoch % bootstrap_interval == 0:
+-            if dist.get_rank() == 0:
+-                print(f"Bootstrap at epoch {epoch}")
+-            if isinstance(model, torch.nn.parallel.DistributedDataParallel):
+-                model.module.update_target_encoder()
+-            else:
+-                model.update_target_encoder()
+-        train_stats = train_one_epoch(
+-            model, data_loader_train,
+-            optimizer, device, epoch, loss_scaler,
+-            log_writer=log_writer,
+-            args=args
+-        )
+-        if args.output_dir and (epoch % 20 == 0 or epoch + 1 == args.epochs):
+-            misc.save_model(
+-                args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+-                loss_scaler=loss_scaler, epoch=epoch)
+-
+-        log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
+-                        'epoch': epoch,}
+-
+-        if args.output_dir and misc.is_main_process():
+-            if log_writer is not None:
+-                log_writer.flush()
+-            with open(os.path.join(args.output_dir, "log.txt"), mode="a", encoding="utf-8") as f:
+-                f.write(json.dumps(log_stats) + "\n")
+-
+-    total_time = time.time() - start_time
+-    total_time_str = str(datetime.timedelta(seconds=int(total_time)))
+-    print('Training time {}'.format(total_time_str))
+-
+-
+-if __name__ == '__main__':
+-    args = get_args_parser()
+-    args = args.parse_args()
+-    if args.output_dir:
+-        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+-    main(args)
+diff --git a/main_pretrain_bootstrap_ema.py b/main_pretrain_bootstrap_ema.py
+deleted file mode 100644
+index 37662d7..0000000
+--- a/main_pretrain_bootstrap_ema.py
++++ /dev/null
+@@ -1,303 +0,0 @@
+-# Copyright (c) Meta Platforms, Inc. and affiliates.
+-# All rights reserved.
+-
+-# This source code is licensed under the license found in the
+-# LICENSE file in the root directory of this source tree.
+-# --------------------------------------------------------
+-# References:
+-# DeiT: https://github.com/facebookresearch/deit
+-# BEiT: https://github.com/microsoft/unilm/tree/master/beit
+-# --------------------------------------------------------
+-import argparse
+-import datetime
+-import json
+-import numpy as np
+-import os
+-import copy
+-import time
+-from pathlib import Path
+-
+-import torch
+-import torch.backends.cudnn as cudnn
+-from torch.utils.tensorboard import SummaryWriter
+-import torchvision.transforms as transforms
+-import torchvision.datasets as datasets
+-import torch.distributed as dist
+-
+-import timm
+-
+-assert timm.__version__ == "0.4.12"  # updating version check
+-import timm.optim.optim_factory as optim_factory
+-
+-import util.misc as misc
+-from util.misc import NativeScalerWithGradNormCount as NativeScaler
+-from util.ema import adjust_ema_momentum
+-
+-import models_mae
+-
+-from engine_pretrain import train_one_epoch
+-
+-
+-def get_args_parser():
+-    parser = argparse.ArgumentParser('MAE pre-training', add_help=False)
+-    parser.add_argument('--batch_size', default=64, type=int,
+-                        help='Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus')
+-    parser.add_argument('--epochs', default=400, type=int)
+-    parser.add_argument('--accum_iter', default=1, type=int,
+-                        help='Accumulate gradient iterations (for increasing the effective batch size under memory constraints)')
+-
+-    # Model parameters
+-    parser.add_argument('--model', default='mae_vit_large_patch16', type=str, metavar='MODEL',
+-                        help='Name of model to train')
+-
+-    parser.add_argument('--input_size', default=224, type=int,
+-                        help='images input size')
+-
+-    parser.add_argument('--mask_ratio', default=0.75, type=float,
+-                        help='Masking ratio (percentage of removed patches).')
+-
+-    parser.add_argument('--norm_pix_loss', action='store_true',
+-                        help='Use (per-patch) normalized pixels as targets for computing loss')
+-    parser.set_defaults(norm_pix_loss=False)
+-
+-    # Optimizer parameters
+-    parser.add_argument('--weight_decay', type=float, default=0.05,
+-                        help='weight decay (default: 0.05)')
+-
+-    parser.add_argument('--lr', type=float, default=None, metavar='LR',
+-                        help='learning rate (absolute lr)')
+-    parser.add_argument('--blr', type=float, default=1e-3, metavar='LR',
+-                        help='base learning rate: absolute_lr = base_lr * total_batch_size / 256')
+-    parser.add_argument('--min_lr', type=float, default=0., metavar='LR',
+-                        help='lower lr bound for cyclic schedulers that hit 0')
+-
+-    parser.add_argument('--warmup_epochs', type=int, default=40, metavar='N',
+-                        help='epochs to warmup LR')
+-
+-    # Dataset parameters
+-    parser.add_argument('--data_path', default='/datasets01/imagenet_full_size/061417/', type=str,
+-                        help='dataset path')
+-    parser.add_argument('--base_model', default='./checkpoints',
+-                        help='path to base model')
+-    parser.add_argument('--select_layer', default=6, type=int,
+-                        help='select layer for bootstrap')
+-    parser.add_argument('--bootstrap_times', default=3, type=int,
+-                        help='number of bootstrap times')
+-    parser.add_argument('--model_ema', action='store_true', default=False)
+-    parser.add_argument('--model_ema_decay', type=float, default=0.999, help='the start ema decay')
+-    parser.add_argument('--model_ema_dynamic', action='store_true', default=False)
+-    parser.add_argument('--ema_warmup_epochs', type=int, default=20, metavar='N',
+-                        help='epochs to warmup EMA')
+-    parser.add_argument('--output_dir', default='./output_dir',
+-                        help='path where to save, empty for no saving')
+-    parser.add_argument('--log_dir', default='./output_dir',
+-                        help='path where to tensorboard log')
+-    parser.add_argument('--device', default='cuda',
+-                        help='device to use for training / testing')
+-    parser.add_argument('--seed', default=0, type=int)
+-    parser.add_argument('--resume', default='',
+-                        help='resume from checkpoint')
+-
+-    parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
+-                        help='start epoch')
+-    parser.add_argument('--num_workers', default=10, type=int)
+-    parser.add_argument('--pin_mem', action='store_true',
+-                        help='Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.')
+-    parser.add_argument('--no_pin_mem', action='store_false', dest='pin_mem')
+-    parser.set_defaults(pin_mem=True)
+-
+-    # distributed training parameters
+-    parser.add_argument('--world_size', default=1, type=int,
+-                        help='number of distributed processes')
+-    parser.add_argument('--local_rank', default=-1, type=int)
+-    parser.add_argument('--dist_on_itp', action='store_true')
+-    parser.add_argument('--dist_url', default='env://',
+-                        help='url used to set up distributed training')
+-
+-    return parser
+-
+-
+-def load_encoder_model(model, checkpoint_path, device='cuda', key_prefix='blocks.'):
+-    """
+-    Load the encoder weights from a base model checkpoint.
+-    
+-    Args:
+-        model (torch.nn.Module): The model to initialize.
+-        checkpoint_path (str): Path to the checkpoint file.
+-        device (str): Device to load the model on (default: 'cuda').
+-        key_prefix (str): Prefix to filter encoder weights (default: 'blocks.').
+-    
+-    Returns:
+-        model (torch.nn.Module): Model with loaded weights.
+-    """
+-    if not os.path.exists(checkpoint_path):
+-        print(f"Checkpoint not found: {checkpoint_path}")
+-        return model
+-
+-    print(f"Loading model checkpoint from {checkpoint_path}...")
+-    checkpoint = torch.load(checkpoint_path, map_location=device)
+-
+-    # Handle models saved with 'module.' prefix (DDP training)
+-    if 'model' in checkpoint:
+-        encoder_state_dict = {k: v for k, v in checkpoint['model'].items() if k.startswith(key_prefix)}
+-    else:
+-        encoder_state_dict = {k: v for k, v in checkpoint.items() if k.startswith(key_prefix)}
+-
+-    new_state_dict = {}
+-    for k, v in encoder_state_dict.items():
+-        new_key = k
+-        if k.startswith("module."):  # Remove DDP prefix
+-            new_key = k[len("module."):]
+-        if key_prefix in new_key:  # Load only encoder weights
+-            new_state_dict[new_key] = v
+-    # Load weights into the model
+-    missing_keys, unexpected_keys = model.load_state_dict(new_state_dict, strict=False)
+-    
+-    print(f"Loaded encoder weights with missing keys: {missing_keys}")
+-    print(f"Unexpected keys: {unexpected_keys}")
+-
+-    return model
+-
+-
+-def main(args):
+-    misc.init_distributed_mode(args)
+-
+-    print('job dir: {}'.format(os.path.dirname(os.path.realpath(__file__))))
+-    print("{}".format(args).replace(', ', ',\n'))
+-
+-    device = torch.device(args.device)
+-
+-    # fix the seed for reproducibility
+-    seed = args.seed + misc.get_rank()
+-    torch.manual_seed(seed)
+-    np.random.seed(seed)
+-
+-    cudnn.benchmark = True
+-
+-    # simple augmentation
+-    transform_train = transforms.Compose([
+-        transforms.RandomCrop(32, padding=4),  # Standard for CIFAR-10
+-        transforms.RandomHorizontalFlip(),
+-        transforms.ToTensor(),
+-        transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])]) # transformation for CIFAR10
+-    dataset_train = datasets.CIFAR10(root=args.data_path, train=True, download=True, transform=transform_train) # CIFAR 10
+-    print(dataset_train)
+-
+-    if True:  # args.distributed:
+-        num_tasks = misc.get_world_size()
+-        global_rank = misc.get_rank()
+-        sampler_train = torch.utils.data.DistributedSampler(
+-            dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
+-        )
+-        print("Sampler_train = %s" % str(sampler_train))
+-    else:
+-        sampler_train = torch.utils.data.RandomSampler(dataset_train)
+-
+-    if global_rank == 0 and args.log_dir is not None:
+-        os.makedirs(args.log_dir, exist_ok=True)
+-        log_writer = SummaryWriter(log_dir=args.log_dir)
+-    else:
+-        log_writer = None
+-
+-    data_loader_train = torch.utils.data.DataLoader(
+-        dataset_train, sampler=sampler_train,
+-        batch_size=args.batch_size,
+-        num_workers=args.num_workers,
+-        pin_memory=args.pin_mem,
+-        drop_last=True,
+-    )
+-    
+-    # define the model
+-    decode_intermediate_feature = args.base_model is not None
+-    model = models_mae.__dict__[args.model](norm_pix_loss=args.norm_pix_loss,decode_intermediate_feature=decode_intermediate_feature)
+-
+-    if args.base_model is not None:
+-        model = load_encoder_model(model, args.base_model, device=device)
+-        if args.model_ema:
+-            model_ema = timm.utils.ModelEmaV2(model, decay=args.model_ema_decay)
+-            model.set_target_encoder(model_ema.module, args.select_layer)
+-        else:
+-            model.set_target_encoder(copy.deepcopy(model), args.select_layer)
+-    model.to(device)
+-
+-    model_without_ddp = model
+-    print("Model = %s" % str(model_without_ddp))
+-
+-    eff_batch_size = args.batch_size * args.accum_iter * misc.get_world_size()
+-    
+-    if args.lr is None:  # only base_lr is specified
+-        args.lr = args.blr * eff_batch_size / 256
+-
+-    print("base lr: %.2e" % (args.lr * 256 / eff_batch_size))
+-    print("actual lr: %.2e" % args.lr)
+-
+-    print("accumulate grad iterations: %d" % args.accum_iter)
+-    print("effective batch size: %d" % eff_batch_size)
+-
+-    if args.distributed:
+-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+-        model_without_ddp = model.module
+-    
+-    # following timm: set wd as 0 for bias and norm layers
+-    param_groups = optim_factory.add_weight_decay(model_without_ddp, args.weight_decay)
+-    optimizer = torch.optim.AdamW(param_groups, lr=args.lr, betas=(0.9, 0.95))
+-    print(optimizer)
+-    loss_scaler = NativeScaler()
+-
+-    misc.load_model(args=args, model_without_ddp=model_without_ddp, optimizer=optimizer, loss_scaler=loss_scaler)
+-
+-    print(f"Start training for {args.epochs} epochs")
+-    start_time = time.time()
+-    bootstrap_interval = args.epochs // args.bootstrap_times
+-    for epoch in range(args.start_epoch, args.epochs):
+-        if args.distributed:
+-            data_loader_train.sampler.set_epoch(epoch)
+-        if epoch % bootstrap_interval == 0 and not args.model_ema:
+-            if dist.get_rank() == 0:
+-                print(f"Bootstrap at epoch {epoch}")
+-            if isinstance(model, torch.nn.parallel.DistributedDataParallel):
+-                model.module.update_target_encoder()
+-            else:
+-                model.update_target_encoder()
+-        elif args.model_ema:
+-            if args.distributed and dist.get_rank() == 0:
+-                print(f"Bootstrap at epoch {epoch} with ema model")
+-            elif not args.distributed:
+-                print(f"Bootstrap at epoch {epoch} with ema model")
+-            model_ema.decay = adjust_ema_momentum(epoch, args)
+-            model_ema.update(model)
+-            if isinstance(model, torch.nn.parallel.DistributedDataParallel):
+-                model.module.update_target_encoder(model_ema.module)
+-            else:
+-                model.update_target_encoder(model_ema.module)
+-        train_stats = train_one_epoch(
+-            model, data_loader_train,
+-            optimizer, device, epoch, loss_scaler,
+-            log_writer=log_writer,
+-            args=args
+-        )
+-        if args.output_dir and (epoch % 20 == 0 or epoch + 1 == args.epochs):
+-            misc.save_model(
+-                args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+-                loss_scaler=loss_scaler, epoch=epoch)
+-
+-        log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
+-                        'epoch': epoch,}
+-
+-        if args.output_dir and misc.is_main_process():
+-            if log_writer is not None:
+-                log_writer.flush()
+-            with open(os.path.join(args.output_dir, "log.txt"), mode="a", encoding="utf-8") as f:
+-                f.write(json.dumps(log_stats) + "\n")
+-
+-    total_time = time.time() - start_time
+-    total_time_str = str(datetime.timedelta(seconds=int(total_time)))
+-    print('Training time {}'.format(total_time_str))
+-
+-
+-if __name__ == '__main__':
+-    args = get_args_parser()
+-    args = args.parse_args()
+-    if args.output_dir:
+-        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+-    main(args)
+diff --git a/models_mae.py b/models_mae.py
+index 21d6b68..880e28f 100644
+--- a/models_mae.py
++++ b/models_mae.py
+@@ -18,8 +18,6 @@ from timm.models.vision_transformer import PatchEmbed, Block
+ 
+ from util.pos_embed import get_2d_sincos_pos_embed
+ 
+-import copy
+-
+ 
+ class MaskedAutoencoderViT(nn.Module):
+     """ Masked Autoencoder with VisionTransformer backbone
+@@ -27,7 +25,7 @@ class MaskedAutoencoderViT(nn.Module):
+     def __init__(self, img_size=224, patch_size=16, in_chans=3,
+                  embed_dim=1024, depth=24, num_heads=16,
+                  decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
+-                 mlp_ratio=4., norm_layer=nn.LayerNorm, norm_pix_loss=False, decode_intermediate_feature=False):
++                 mlp_ratio=4., norm_layer=nn.LayerNorm, norm_pix_loss=False):
+         super().__init__()
+ 
+         # --------------------------------------------------------------------------
+@@ -39,7 +37,7 @@ class MaskedAutoencoderViT(nn.Module):
+         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim), requires_grad=False)  # fixed sin-cos embedding
+ 
+         self.blocks = nn.ModuleList([
+-            Block(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer) # delete args qk_scale reference: https://github.com/facebookresearch/mae/issues/58#issuecomment-1341486006
++            Block(embed_dim, num_heads, mlp_ratio, qkv_bias=True, qk_scale=None, norm_layer=norm_layer)
+             for i in range(depth)])
+         self.norm = norm_layer(embed_dim)
+         # --------------------------------------------------------------------------
+@@ -53,53 +51,17 @@ class MaskedAutoencoderViT(nn.Module):
+         self.decoder_pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, decoder_embed_dim), requires_grad=False)  # fixed sin-cos embedding
+ 
+         self.decoder_blocks = nn.ModuleList([
+-            Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer) # delete args qk_scale for the same reason
++            Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, qk_scale=None, norm_layer=norm_layer)
+             for i in range(decoder_depth)])
+ 
+         self.decoder_norm = norm_layer(decoder_embed_dim)
+-        if decode_intermediate_feature == False:
+-            self.decoder_pred = nn.Linear(decoder_embed_dim, patch_size**2 * in_chans, bias=True) # decoder to patch
+-        else:
+-            self.decoder_pred = nn.Linear(decoder_embed_dim, embed_dim, bias=True)
++        self.decoder_pred = nn.Linear(decoder_embed_dim, patch_size**2 * in_chans, bias=True) # decoder to patch
+         # --------------------------------------------------------------------------
+ 
+         self.norm_pix_loss = norm_pix_loss
+ 
+         self.initialize_weights()
+ 
+-    def set_target_encoder(self, target_encoder,selected_layer):
+-        """
+-        Set the target encoder used for bootstrapping.
+-
+-        Args:
+-            target_encoder (nn.Module): The target encoder used for bootstrapping.
+-        """
+-        self.target_encoder = target_encoder
+-        # target encoder need no grad
+-        for param in self.target_encoder.parameters():
+-            param.requires_grad = False
+-        self.target_encoder.selected_layer = selected_layer
+-    
+-    def update_target_encoder(self,model=None):
+-        """
+-        Replaces the target encoder with the current model's encoder.
+-
+-        Args:
+-            model (nn.Module): The current MAE model (MAE-k).
+-            target_model (nn.Module): The target encoder used for bootstrapping.
+-
+-        Returns:
+-            target_model (nn.Module): Updated target encoder.
+-        """
+-        print("Updating target encoder")
+-        if model is None:
+-            self.target_encoder.blocks = copy.deepcopy(self.blocks)  # Directly copy the current model as the new target encoder
+-        else:
+-            self.target_encoder.blocks = copy.deepcopy(model.blocks)  # Directly copy the current model as the new target encoder
+-        for param in self.target_encoder.parameters():
+-            param.requires_grad = False
+-
+-
+     def initialize_weights(self):
+         # initialization
+         # initialize (and freeze) pos_embed by sin-cos embedding
+@@ -185,15 +147,13 @@ class MaskedAutoencoderViT(nn.Module):
+ 
+         return x_masked, mask, ids_restore
+ 
+-    def forward_encoder(self, x, mask_ratio, return_intermediate=False, selected_layer=None):
+-        if return_intermediate:
+-            assert selected_layer is not None, "selected_layer must be specified for intermediate output"
++    def forward_encoder(self, x, mask_ratio):
+         # embed patches
+         x = self.patch_embed(x)
+ 
+         # add pos embed w/o cls token
+         x = x + self.pos_embed[:, 1:, :]
+-        x_unmasked = x
++
+         # masking: length -> length * mask_ratio
+         x, mask, ids_restore = self.random_masking(x, mask_ratio)
+ 
+@@ -201,15 +161,12 @@ class MaskedAutoencoderViT(nn.Module):
+         cls_token = self.cls_token + self.pos_embed[:, :1, :]
+         cls_tokens = cls_token.expand(x.shape[0], -1, -1)
+         x = torch.cat((cls_tokens, x), dim=1)
++
+         # apply Transformer blocks
+-        for idx, blk in enumerate(self.blocks):
++        for blk in self.blocks:
+             x = blk(x)
+-            x_unmasked = blk(x_unmasked)
+-            if return_intermediate and selected_layer is not None and idx == selected_layer:
+-                intermediate_output = x_unmasked
+         x = self.norm(x)
+-        if return_intermediate:
+-            return x, mask, ids_restore, intermediate_output
++
+         return x, mask, ids_restore
+ 
+     def forward_decoder(self, x, ids_restore):
+@@ -255,49 +212,14 @@ class MaskedAutoencoderViT(nn.Module):
+ 
+         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
+         return loss
+-    
+-    def forward_loss_intermediate_feature(self, imgs, pred, mask, target_intermediate):
+-        """
+-        imgs: [N, 3, H, W]
+-        pred: [N, L, p*p*3]
+-        mask: [N, L], 0 is keep, 1 is remove, 
+-        target_intermediate: [N, L, D] intermediate feature
+-        """
+-        target = target_intermediate
+-        if self.norm_pix_loss:
+-            mean = target.mean(dim=-1, keepdim=True)
+-            var = target.var(dim=-1, keepdim=True)
+-            target = (target - mean) / (var + 1.e-6)**.5
+-        loss = (pred - target) ** 2
+-        loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
+-
+-        loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
+-        return loss
+ 
+     def forward(self, imgs, mask_ratio=0.75):
+-        if self.target_encoder is not None:
+-            with torch.no_grad():
+-                try:
+-                    target_latent, _, _, target_intermediate = self.target_encoder.forward_encoder(imgs, mask_ratio, return_intermediate=True, 
+-                                                                                               selected_layer=self.target_encoder.selected_layer)
+-                except:
+-                    from ipdb import set_trace; set_trace()
+         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio)
+         pred = self.forward_decoder(latent, ids_restore)  # [N, L, p*p*3]
+-        if self.target_encoder is not None:
+-            loss = self.forward_loss_intermediate_feature(imgs, pred, mask, target_intermediate)
+-        else:
+-            loss = self.forward_loss(imgs, pred, mask)
++        loss = self.forward_loss(imgs, pred, mask)
+         return loss, pred, mask
+ 
+ 
+-def mae_vit_tiny_img32_patch4_dec512d8b(**kwargs): # https://github.com/facebookresearch/deit/blob/7e160fe43f0252d17191b71cbb5826254114ea5b/models.py#L63
+-    model = MaskedAutoencoderViT(
+-        img_size=32, patch_size=4, embed_dim=192, depth=12, num_heads=3,
+-        decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
+-        mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+-    return model
+-
+ def mae_vit_base_patch16_dec512d8b(**kwargs):
+     model = MaskedAutoencoderViT(
+         patch_size=16, embed_dim=768, depth=12, num_heads=12,
+@@ -305,13 +227,6 @@ def mae_vit_base_patch16_dec512d8b(**kwargs):
+         mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+     return model
+ 
+-def mae_vit_base_img32_patch4_dec512d8b(**kwargs):
+-    model = MaskedAutoencoderViT(
+-        img_size=32, patch_size=4, embed_dim=768, depth=12, num_heads=12,
+-        decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
+-        mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+-    return model
+-
+ 
+ def mae_vit_large_patch16_dec512d8b(**kwargs):
+     model = MaskedAutoencoderViT(
+diff --git a/models_vit.py b/models_vit.py
+index 756c07b..2244a17 100644
+--- a/models_vit.py
++++ b/models_vit.py
+@@ -52,11 +52,6 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
+ 
+         return outcome
+ 
+-def vit_tiny_img32_patch4(**kwargs):
+-    model = VisionTransformer(
+-        img_size=32, patch_size=4, embed_dim=192, depth=12, num_heads=3, mlp_ratio=4, qkv_bias=True,
+-        norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+-    return model
+ 
+ def vit_base_patch16(**kwargs):
+     model = VisionTransformer(
+@@ -64,12 +59,6 @@ def vit_base_patch16(**kwargs):
+         norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+     return model
+ 
+-def vit_base_img32_patch16(**kwargs):
+-    model = VisionTransformer(
+-        img_size=32, patch_size=4, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4, qkv_bias=True,
+-        norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+-    return model
+-
+ 
+ def vit_large_patch16(**kwargs):
+     model = VisionTransformer(
+diff --git a/requirements.txt b/requirements.txt
+deleted file mode 100644
+index 3909628..0000000
+--- a/requirements.txt
++++ /dev/null
+@@ -1,5 +0,0 @@
+-torch==1.13.1
+-torchvision
+-timm==0.4.12 # https://github.com/facebookresearch/deit/issues/206
+-tensorboard
+-six
+\ No newline at end of file
+diff --git a/scripts/bmae_eval_finetune_layer_11_ema_decay_0999_warm_20.sh b/scripts/bmae_eval_finetune_layer_11_ema_decay_0999_warm_20.sh
+deleted file mode 100644
+index 47658a5..0000000
+--- a/scripts/bmae_eval_finetune_layer_11_ema_decay_0999_warm_20.sh
++++ /dev/null
+@@ -1,42 +0,0 @@
+-#!/bin/bash
+-LAYER=11
+-TIMES=5
+-EMA_WARMUP=20
+-EMA_DECAY=0.999
+-BATCH_SIZE=1024
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_finetune_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_finetune_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29525  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.log \
+-    2> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.err
+\ No newline at end of file
+diff --git a/scripts/bmae_eval_finetune_layer_11_ema_decay_099_warm_1.sh b/scripts/bmae_eval_finetune_layer_11_ema_decay_099_warm_1.sh
+deleted file mode 100644
+index b16d420..0000000
+--- a/scripts/bmae_eval_finetune_layer_11_ema_decay_099_warm_1.sh
++++ /dev/null
+@@ -1,42 +0,0 @@
+-#!/bin/bash
+-LAYER=11
+-TIMES=5
+-EMA_WARMUP=1
+-EMA_DECAY=0.99
+-BATCH_SIZE=1024
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_finetune_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_finetune_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29526  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.log \
+-    2> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.err
+\ No newline at end of file
+diff --git a/scripts/bmae_eval_finetune_layer_11_ema_decay_099_warm_10.sh b/scripts/bmae_eval_finetune_layer_11_ema_decay_099_warm_10.sh
+deleted file mode 100644
+index 5a443f1..0000000
+--- a/scripts/bmae_eval_finetune_layer_11_ema_decay_099_warm_10.sh
++++ /dev/null
+@@ -1,42 +0,0 @@
+-#!/bin/bash
+-LAYER=11
+-TIMES=5
+-EMA_WARMUP=10
+-EMA_DECAY=0.99
+-BATCH_SIZE=1024
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_finetune_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_finetune_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29528  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.log \
+-    2> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.err
+\ No newline at end of file
+diff --git a/scripts/bmae_eval_finetune_layer_11_ema_decay_099_warm_1_lr_1e-2.sh b/scripts/bmae_eval_finetune_layer_11_ema_decay_099_warm_1_lr_1e-2.sh
+deleted file mode 100644
+index 8c75345..0000000
+--- a/scripts/bmae_eval_finetune_layer_11_ema_decay_099_warm_1_lr_1e-2.sh
++++ /dev/null
+@@ -1,42 +0,0 @@
+-#!/bin/bash
+-LAYER=11
+-TIMES=5
+-EMA_WARMUP=1
+-EMA_DECAY=0.99
+-BATCH_SIZE=1024
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}/checkpoint-199.pth
+-BLR=1e-2 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_finetune_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_lr_1e-2
+-OUTPUT=checkpoints/bmae_finetune_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_lr_1e-2
+-
+-NUM_GPUS=8
+-MASTER_PORT=29526  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_lr_1e-2_linprobe.log \
+-    2> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_lr_1e-2_linprobe.err
+\ No newline at end of file
+diff --git a/scripts/bmae_eval_finetune_layer_11_ema_decay_099_warm_1_lr_1e-4.sh b/scripts/bmae_eval_finetune_layer_11_ema_decay_099_warm_1_lr_1e-4.sh
+deleted file mode 100644
+index 1b65f81..0000000
+--- a/scripts/bmae_eval_finetune_layer_11_ema_decay_099_warm_1_lr_1e-4.sh
++++ /dev/null
+@@ -1,42 +0,0 @@
+-#!/bin/bash
+-LAYER=11
+-TIMES=5
+-EMA_WARMUP=1
+-EMA_DECAY=0.99
+-BATCH_SIZE=1024
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}/checkpoint-199.pth
+-BLR=1e-4 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_finetune_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_lr_1e-4
+-OUTPUT=checkpoints/bmae_finetune_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_lr_1e-4
+-
+-NUM_GPUS=8
+-MASTER_PORT=29536  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_lr_1e-4_linprobe.log \
+-    2> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_lr_1e-4_linprobe.err
+\ No newline at end of file
+diff --git a/scripts/bmae_eval_finetune_layer_11_ema_decay_099_warm_20.sh b/scripts/bmae_eval_finetune_layer_11_ema_decay_099_warm_20.sh
+deleted file mode 100644
+index f12b86b..0000000
+--- a/scripts/bmae_eval_finetune_layer_11_ema_decay_099_warm_20.sh
++++ /dev/null
+@@ -1,42 +0,0 @@
+-#!/bin/bash
+-LAYER=11
+-TIMES=5
+-EMA_WARMUP=20
+-EMA_DECAY=0.99
+-BATCH_SIZE=1024
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_finetune_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_finetune_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29526  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.log \
+-    2> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.err
+\ No newline at end of file
+diff --git a/scripts/bmae_eval_finetune_layer_11_ema_decay_09_warm_20.sh b/scripts/bmae_eval_finetune_layer_11_ema_decay_09_warm_20.sh
+deleted file mode 100644
+index 2e9f744..0000000
+--- a/scripts/bmae_eval_finetune_layer_11_ema_decay_09_warm_20.sh
++++ /dev/null
+@@ -1,42 +0,0 @@
+-#!/bin/bash
+-LAYER=11
+-TIMES=5
+-EMA_WARMUP=20
+-EMA_DECAY=0.9
+-BATCH_SIZE=1024
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_finetune_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_finetune_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29527  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.log \
+-    2> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.err
+\ No newline at end of file
+diff --git a/scripts/bmae_eval_finetune_layer_11_time_3.sh b/scripts/bmae_eval_finetune_layer_11_time_3.sh
+deleted file mode 100644
+index fe2a903..0000000
+--- a/scripts/bmae_eval_finetune_layer_11_time_3.sh
++++ /dev/null
+@@ -1,40 +0,0 @@
+-#!/bin/bash
+-LAYER=11
+-TIMES=3
+-BATCH_SIZE=1024
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_finetune_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_finetune_layer_${LAYER}_time_${TIMES}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29502  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_time_${TIMES}_finetune.log \
+-    2> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_time_${TIMES}_finetune.err
+\ No newline at end of file
+diff --git a/scripts/bmae_eval_finetune_layer_1_time_3.sh b/scripts/bmae_eval_finetune_layer_1_time_3.sh
+deleted file mode 100644
+index d96941f..0000000
+--- a/scripts/bmae_eval_finetune_layer_1_time_3.sh
++++ /dev/null
+@@ -1,40 +0,0 @@
+-#!/bin/bash
+-LAYER=1
+-TIMES=3
+-BATCH_SIZE=1024
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_finetune_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_finetune_layer_${LAYER}_time_${TIMES}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29531  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_time_${TIMES}_finetune.log \
+-    2> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_time_${TIMES}_finetune.err
+\ No newline at end of file
+diff --git a/scripts/bmae_eval_finetune_layer_3_ema_decay_0999_warm_20.sh b/scripts/bmae_eval_finetune_layer_3_ema_decay_0999_warm_20.sh
+deleted file mode 100644
+index 7255c77..0000000
+--- a/scripts/bmae_eval_finetune_layer_3_ema_decay_0999_warm_20.sh
++++ /dev/null
+@@ -1,42 +0,0 @@
+-#!/bin/bash
+-LAYER=3
+-TIMES=5
+-EMA_WARMUP=20
+-EMA_DECAY=0.999
+-BATCH_SIZE=128
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_finetune_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_finetune_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29514  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.log \
+-    2> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.err
+\ No newline at end of file
+diff --git a/scripts/bmae_eval_finetune_layer_3_time_3.sh b/scripts/bmae_eval_finetune_layer_3_time_3.sh
+deleted file mode 100644
+index 59c82ba..0000000
+--- a/scripts/bmae_eval_finetune_layer_3_time_3.sh
++++ /dev/null
+@@ -1,40 +0,0 @@
+-#!/bin/bash
+-LAYER=3
+-TIMES=3
+-BATCH_SIZE=128
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_finetune_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_finetune_layer_${LAYER}_time_${TIMES}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29501  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_time_${TIMES}_finetune.log \
+-    2> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_time_${TIMES}_finetune.err
+\ No newline at end of file
+diff --git a/scripts/bmae_eval_finetune_layer_6_ema_decay_0999_warm_20.sh b/scripts/bmae_eval_finetune_layer_6_ema_decay_0999_warm_20.sh
+deleted file mode 100644
+index e77200f..0000000
+--- a/scripts/bmae_eval_finetune_layer_6_ema_decay_0999_warm_20.sh
++++ /dev/null
+@@ -1,42 +0,0 @@
+-#!/bin/bash
+-LAYER=6
+-TIMES=5
+-EMA_WARMUP=20
+-EMA_DECAY=0.999
+-BATCH_SIZE=128
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_finetune_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_finetune_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29524  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.log \
+-    2> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.err
+\ No newline at end of file
+diff --git a/scripts/bmae_eval_finetune_layer_6_time_1.sh b/scripts/bmae_eval_finetune_layer_6_time_1.sh
+deleted file mode 100644
+index 6d61552..0000000
+--- a/scripts/bmae_eval_finetune_layer_6_time_1.sh
++++ /dev/null
+@@ -1,40 +0,0 @@
+-#!/bin/bash
+-LAYER=6
+-TIMES=1
+-BATCH_SIZE=128
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_finetune_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_finetune_layer_${LAYER}_time_${TIMES}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29501  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_time_${TIMES}_finetune.log \
+-    2> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_time_${TIMES}_finetune.err
+\ No newline at end of file
+diff --git a/scripts/bmae_eval_finetune_layer_6_time_10.sh b/scripts/bmae_eval_finetune_layer_6_time_10.sh
+deleted file mode 100644
+index 3bb50e6..0000000
+--- a/scripts/bmae_eval_finetune_layer_6_time_10.sh
++++ /dev/null
+@@ -1,40 +0,0 @@
+-#!/bin/bash
+-LAYER=6
+-TIMES=10
+-BATCH_SIZE=128
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_finetune_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_finetune_layer_${LAYER}_time_${TIMES}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29510  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_time_${TIMES}_finetune.log \
+-    2> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_time_${TIMES}_finetune.err
+\ No newline at end of file
+diff --git a/scripts/bmae_eval_finetune_layer_6_time_3.sh b/scripts/bmae_eval_finetune_layer_6_time_3.sh
+deleted file mode 100644
+index c59f160..0000000
+--- a/scripts/bmae_eval_finetune_layer_6_time_3.sh
++++ /dev/null
+@@ -1,40 +0,0 @@
+-#!/bin/bash
+-LAYER=6
+-TIMES=3
+-BATCH_SIZE=128
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_finetune_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_finetune_layer_${LAYER}_time_${TIMES}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29500  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_time_${TIMES}_finetune.log \
+-    2> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_time_${TIMES}_finetune.err
+\ No newline at end of file
+diff --git a/scripts/bmae_eval_finetune_layer_6_time_3_bz_1024.sh b/scripts/bmae_eval_finetune_layer_6_time_3_bz_1024.sh
+deleted file mode 100644
+index 7d405ca..0000000
+--- a/scripts/bmae_eval_finetune_layer_6_time_3_bz_1024.sh
++++ /dev/null
+@@ -1,40 +0,0 @@
+-#!/bin/bash
+-LAYER=6
+-TIMES=3
+-BATCH_SIZE=1024
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_finetune_layer_${LAYER}_time_${TIMES}_bz_1024
+-OUTPUT=checkpoints/bmae_finetune_layer_${LAYER}_time_${TIMES}_bz_1024
+-
+-NUM_GPUS=8
+-MASTER_PORT=29500  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_time_${TIMES}_finetune_bz_1024.log \
+-    2> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_time_${TIMES}_finetune_bz_1024.err
+\ No newline at end of file
+diff --git a/scripts/bmae_eval_finetune_layer_6_time_3_wonorm.sh b/scripts/bmae_eval_finetune_layer_6_time_3_wonorm.sh
+deleted file mode 100644
+index fc0af03..0000000
+--- a/scripts/bmae_eval_finetune_layer_6_time_3_wonorm.sh
++++ /dev/null
+@@ -1,40 +0,0 @@
+-#!/bin/bash
+-LAYER=6
+-TIMES=3
+-BATCH_SIZE=1024
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}_wonorm/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_finetune_layer_${LAYER}_time_${TIMES}_wonorm
+-OUTPUT=checkpoints/bmae_finetune_layer_${LAYER}_time_${TIMES}_wonorm
+-
+-NUM_GPUS=8
+-MASTER_PORT=29500  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_time_${TIMES}_wonorm_finetune.log \
+-    2> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_time_${TIMES}_wonorm_finetune.err
+\ No newline at end of file
+diff --git a/scripts/bmae_eval_finetune_layer_6_time_5.sh b/scripts/bmae_eval_finetune_layer_6_time_5.sh
+deleted file mode 100644
+index 0dbf2e0..0000000
+--- a/scripts/bmae_eval_finetune_layer_6_time_5.sh
++++ /dev/null
+@@ -1,40 +0,0 @@
+-#!/bin/bash
+-LAYER=6
+-TIMES=5
+-BATCH_SIZE=128
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_finetune_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_finetune_layer_${LAYER}_time_${TIMES}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29504  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_time_${TIMES}_finetune.log \
+-    2> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_time_${TIMES}_finetune.err
+\ No newline at end of file
+diff --git a/scripts/bmae_eval_finetune_layer_9_ema_decay_0999_warm_20.sh b/scripts/bmae_eval_finetune_layer_9_ema_decay_0999_warm_20.sh
+deleted file mode 100644
+index 92ab268..0000000
+--- a/scripts/bmae_eval_finetune_layer_9_ema_decay_0999_warm_20.sh
++++ /dev/null
+@@ -1,42 +0,0 @@
+-#!/bin/bash
+-LAYER=9
+-TIMES=5
+-EMA_WARMUP=20
+-EMA_DECAY=0.999
+-BATCH_SIZE=128
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_finetune_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_finetune_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29525  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.log \
+-    2> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.err
+\ No newline at end of file
+diff --git a/scripts/bmae_eval_finetune_layer_9_time_3.sh b/scripts/bmae_eval_finetune_layer_9_time_3.sh
+deleted file mode 100644
+index b2db4cc..0000000
+--- a/scripts/bmae_eval_finetune_layer_9_time_3.sh
++++ /dev/null
+@@ -1,40 +0,0 @@
+-#!/bin/bash
+-LAYER=9
+-TIMES=3
+-BATCH_SIZE=128
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_finetune_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_finetune_layer_${LAYER}_time_${TIMES}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29502  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_time_${TIMES}_finetune.log \
+-    2> log/bmae_finetune/bmae_pretrain_layer_${LAYER}_time_${TIMES}_finetune.err
+\ No newline at end of file
+diff --git a/scripts/bmae_eval_linear_layer_11_ema_decay_0999_warm_20.sh b/scripts/bmae_eval_linear_layer_11_ema_decay_0999_warm_20.sh
+deleted file mode 100644
+index a5288c8..0000000
+--- a/scripts/bmae_eval_linear_layer_11_ema_decay_0999_warm_20.sh
++++ /dev/null
+@@ -1,38 +0,0 @@
+-#!/bin/bash
+-LAYER=11
+-TIMES=5
+-EMA_WARMUP=20
+-EMA_DECAY=0.999
+-BATCH_SIZE=16384
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}/checkpoint-199.pth
+-BLR=0.1
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_linprobe_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_linprobe_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29522  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_linprobe.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --finetune ${PRETRAIN_CKPT} \
+-    --nb_classes $NUM_CLASSES \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.0 \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.log \
+-    2> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.err
+diff --git a/scripts/bmae_eval_linear_layer_11_ema_decay_099_warm_1.sh b/scripts/bmae_eval_linear_layer_11_ema_decay_099_warm_1.sh
+deleted file mode 100644
+index 9727077..0000000
+--- a/scripts/bmae_eval_linear_layer_11_ema_decay_099_warm_1.sh
++++ /dev/null
+@@ -1,38 +0,0 @@
+-#!/bin/bash
+-LAYER=11
+-TIMES=5
+-EMA_WARMUP=1
+-EMA_DECAY=0.99
+-BATCH_SIZE=16384
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}/checkpoint-199.pth
+-BLR=0.1
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_linprobe_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_linprobe_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29522  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_linprobe.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --finetune ${PRETRAIN_CKPT} \
+-    --nb_classes $NUM_CLASSES \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.0 \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.log \
+-    2> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.err
+diff --git a/scripts/bmae_eval_linear_layer_11_ema_decay_099_warm_10.sh b/scripts/bmae_eval_linear_layer_11_ema_decay_099_warm_10.sh
+deleted file mode 100644
+index dfda316..0000000
+--- a/scripts/bmae_eval_linear_layer_11_ema_decay_099_warm_10.sh
++++ /dev/null
+@@ -1,38 +0,0 @@
+-#!/bin/bash
+-LAYER=11
+-TIMES=5
+-EMA_WARMUP=10
+-EMA_DECAY=0.99
+-BATCH_SIZE=16384
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}/checkpoint-199.pth
+-BLR=0.1
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_linprobe_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_linprobe_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29622  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_linprobe.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --finetune ${PRETRAIN_CKPT} \
+-    --nb_classes $NUM_CLASSES \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.0 \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.log \
+-    2> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.err
+diff --git a/scripts/bmae_eval_linear_layer_11_ema_decay_099_warm_20.sh b/scripts/bmae_eval_linear_layer_11_ema_decay_099_warm_20.sh
+deleted file mode 100644
+index b43405a..0000000
+--- a/scripts/bmae_eval_linear_layer_11_ema_decay_099_warm_20.sh
++++ /dev/null
+@@ -1,38 +0,0 @@
+-#!/bin/bash
+-LAYER=11
+-TIMES=5
+-EMA_WARMUP=20
+-EMA_DECAY=0.99
+-BATCH_SIZE=16384
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}/checkpoint-199.pth
+-BLR=0.1
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_linprobe_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_linprobe_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29521  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_linprobe.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --finetune ${PRETRAIN_CKPT} \
+-    --nb_classes $NUM_CLASSES \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.0 \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.log \
+-    2> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.err
+diff --git a/scripts/bmae_eval_linear_layer_11_ema_decay_09_warm_20.sh b/scripts/bmae_eval_linear_layer_11_ema_decay_09_warm_20.sh
+deleted file mode 100644
+index 631374e..0000000
+--- a/scripts/bmae_eval_linear_layer_11_ema_decay_09_warm_20.sh
++++ /dev/null
+@@ -1,38 +0,0 @@
+-#!/bin/bash
+-LAYER=11
+-TIMES=5
+-EMA_WARMUP=20
+-EMA_DECAY=0.9
+-BATCH_SIZE=16384
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}/checkpoint-199.pth
+-BLR=0.1
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_linprobe_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_linprobe_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29520  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_linprobe.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --finetune ${PRETRAIN_CKPT} \
+-    --nb_classes $NUM_CLASSES \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.0 \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.log \
+-    2> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.err
+diff --git a/scripts/bmae_eval_linear_layer_11_time_3.sh b/scripts/bmae_eval_linear_layer_11_time_3.sh
+deleted file mode 100644
+index fbf1589..0000000
+--- a/scripts/bmae_eval_linear_layer_11_time_3.sh
++++ /dev/null
+@@ -1,36 +0,0 @@
+-#!/bin/bash
+-LAYER=11
+-TIMES=3
+-BATCH_SIZE=16384
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}/checkpoint-199.pth
+-BLR=0.1
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_linprobe_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_linprobe_layer_${LAYER}_time_${TIMES}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29500  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_linprobe.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --finetune ${PRETRAIN_CKPT} \
+-    --nb_classes $NUM_CLASSES \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.0 \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_time_${TIMES}_linprobe.log \
+-    2> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_time_${TIMES}_linprobe.err
+diff --git a/scripts/bmae_eval_linear_layer_1_time_3.sh b/scripts/bmae_eval_linear_layer_1_time_3.sh
+deleted file mode 100644
+index 4cd34aa..0000000
+--- a/scripts/bmae_eval_linear_layer_1_time_3.sh
++++ /dev/null
+@@ -1,36 +0,0 @@
+-#!/bin/bash
+-LAYER=1
+-TIMES=3
+-BATCH_SIZE=16384
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}/checkpoint-199.pth
+-BLR=0.1
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_linprobe_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_linprobe_layer_${LAYER}_time_${TIMES}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29500  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_linprobe.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --finetune ${PRETRAIN_CKPT} \
+-    --nb_classes $NUM_CLASSES \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.0 \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_time_${TIMES}_linprobe.log \
+-    2> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_time_${TIMES}_linprobe.err
+diff --git a/scripts/bmae_eval_linear_layer_3_ema_decay_0999_warm_20.sh b/scripts/bmae_eval_linear_layer_3_ema_decay_0999_warm_20.sh
+deleted file mode 100644
+index 03b81e4..0000000
+--- a/scripts/bmae_eval_linear_layer_3_ema_decay_0999_warm_20.sh
++++ /dev/null
+@@ -1,38 +0,0 @@
+-#!/bin/bash
+-LAYER=3
+-TIMES=5
+-EMA_WARMUP=20
+-EMA_DECAY=0.999
+-BATCH_SIZE=16384
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}/checkpoint-199.pth
+-BLR=0.1
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_linprobe_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_linprobe_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29502  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_linprobe.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --finetune ${PRETRAIN_CKPT} \
+-    --nb_classes $NUM_CLASSES \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.0 \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.log \
+-    2> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.err
+diff --git a/scripts/bmae_eval_linear_layer_3_time_3.sh b/scripts/bmae_eval_linear_layer_3_time_3.sh
+deleted file mode 100644
+index 1ee86ea..0000000
+--- a/scripts/bmae_eval_linear_layer_3_time_3.sh
++++ /dev/null
+@@ -1,36 +0,0 @@
+-#!/bin/bash
+-LAYER=3
+-TIMES=3
+-BATCH_SIZE=16384
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}/checkpoint-199.pth
+-BLR=0.1
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_linprobe_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_linprobe_layer_${LAYER}_time_${TIMES}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29500  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_linprobe.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --finetune ${PRETRAIN_CKPT} \
+-    --nb_classes $NUM_CLASSES \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.0 \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_time_${TIMES}_linprobe.log \
+-    2> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_time_${TIMES}_linprobe.err
+diff --git a/scripts/bmae_eval_linear_layer_6_ema_decay_0999_warm_20.sh b/scripts/bmae_eval_linear_layer_6_ema_decay_0999_warm_20.sh
+deleted file mode 100644
+index 01d0598..0000000
+--- a/scripts/bmae_eval_linear_layer_6_ema_decay_0999_warm_20.sh
++++ /dev/null
+@@ -1,38 +0,0 @@
+-#!/bin/bash
+-LAYER=6
+-TIMES=5
+-EMA_WARMUP=20
+-EMA_DECAY=0.999
+-BATCH_SIZE=16384
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}/checkpoint-199.pth
+-BLR=0.1
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_linprobe_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_linprobe_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29502  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_linprobe.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --finetune ${PRETRAIN_CKPT} \
+-    --nb_classes $NUM_CLASSES \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.0 \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.log \
+-    2> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.err
+diff --git a/scripts/bmae_eval_linear_layer_6_time_1.sh b/scripts/bmae_eval_linear_layer_6_time_1.sh
+deleted file mode 100644
+index eb45864..0000000
+--- a/scripts/bmae_eval_linear_layer_6_time_1.sh
++++ /dev/null
+@@ -1,36 +0,0 @@
+-#!/bin/bash
+-LAYER=6
+-TIMES=1
+-BATCH_SIZE=16384
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}/checkpoint-199.pth
+-BLR=0.1
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_linprobe_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_linprobe_layer_${LAYER}_time_${TIMES}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29500  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_linprobe.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --finetune ${PRETRAIN_CKPT} \
+-    --nb_classes $NUM_CLASSES \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.0 \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_time_${TIMES}_linprobe.log \
+-    2> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_time_${TIMES}_linprobe.err
+diff --git a/scripts/bmae_eval_linear_layer_6_time_10.sh b/scripts/bmae_eval_linear_layer_6_time_10.sh
+deleted file mode 100644
+index fd356df..0000000
+--- a/scripts/bmae_eval_linear_layer_6_time_10.sh
++++ /dev/null
+@@ -1,36 +0,0 @@
+-#!/bin/bash
+-LAYER=6
+-TIMES=10
+-BATCH_SIZE=16384
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}/checkpoint-199.pth
+-BLR=0.1
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_linprobe_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_linprobe_layer_${LAYER}_time_${TIMES}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29503  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_linprobe.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --finetune ${PRETRAIN_CKPT} \
+-    --nb_classes $NUM_CLASSES \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.0 \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_time_${TIMES}_linprobe.log \
+-    2> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_time_${TIMES}_linprobe.err
+diff --git a/scripts/bmae_eval_linear_layer_6_time_3.sh b/scripts/bmae_eval_linear_layer_6_time_3.sh
+deleted file mode 100644
+index 008aea4..0000000
+--- a/scripts/bmae_eval_linear_layer_6_time_3.sh
++++ /dev/null
+@@ -1,36 +0,0 @@
+-#!/bin/bash
+-LAYER=6
+-TIMES=3
+-BATCH_SIZE=16384
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}/checkpoint-199.pth
+-BLR=0.1
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_linprobe_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_linprobe_layer_${LAYER}_time_${TIMES}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29500  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_linprobe.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --finetune ${PRETRAIN_CKPT} \
+-    --nb_classes $NUM_CLASSES \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.0 \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_time_${TIMES}_linprobe.log \
+-    2> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_time_${TIMES}_linprobe.err
+diff --git a/scripts/bmae_eval_linear_layer_6_time_3_wonorm.sh b/scripts/bmae_eval_linear_layer_6_time_3_wonorm.sh
+deleted file mode 100644
+index ac2fd1b..0000000
+--- a/scripts/bmae_eval_linear_layer_6_time_3_wonorm.sh
++++ /dev/null
+@@ -1,36 +0,0 @@
+-#!/bin/bash
+-LAYER=6
+-TIMES=3
+-BATCH_SIZE=16384
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}_wonorm/checkpoint-199.pth
+-BLR=0.1
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_linprobe_layer_${LAYER}_time_${TIMES}_wonorm
+-OUTPUT=checkpoints/bmae_linprobe_layer_${LAYER}_time_${TIMES}_wonorm
+-
+-NUM_GPUS=8
+-MASTER_PORT=29510  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_linprobe.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --finetune ${PRETRAIN_CKPT} \
+-    --nb_classes $NUM_CLASSES \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.0 \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_time_${TIMES}_wonorm_linprobe.log \
+-    2> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_time_${TIMES}_wonorm_linprobe.err
+diff --git a/scripts/bmae_eval_linear_layer_6_time_5.sh b/scripts/bmae_eval_linear_layer_6_time_5.sh
+deleted file mode 100644
+index 0b66c29..0000000
+--- a/scripts/bmae_eval_linear_layer_6_time_5.sh
++++ /dev/null
+@@ -1,36 +0,0 @@
+-#!/bin/bash
+-LAYER=6
+-TIMES=5
+-BATCH_SIZE=16384
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}/checkpoint-199.pth
+-BLR=0.1
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_linprobe_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_linprobe_layer_${LAYER}_time_${TIMES}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29503  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_linprobe.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --finetune ${PRETRAIN_CKPT} \
+-    --nb_classes $NUM_CLASSES \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.0 \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_time_${TIMES}_linprobe.log \
+-    2> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_time_${TIMES}_linprobe.err
+diff --git a/scripts/bmae_eval_linear_layer_9_ema_decay_0999_warm_20.sh b/scripts/bmae_eval_linear_layer_9_ema_decay_0999_warm_20.sh
+deleted file mode 100644
+index c2d0e8b..0000000
+--- a/scripts/bmae_eval_linear_layer_9_ema_decay_0999_warm_20.sh
++++ /dev/null
+@@ -1,38 +0,0 @@
+-#!/bin/bash
+-LAYER=9
+-TIMES=5
+-EMA_WARMUP=20
+-EMA_DECAY=0.999
+-BATCH_SIZE=16384
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}/checkpoint-199.pth
+-BLR=0.1
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_linprobe_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_linprobe_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29522  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_linprobe.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --finetune ${PRETRAIN_CKPT} \
+-    --nb_classes $NUM_CLASSES \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.0 \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.log \
+-    2> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}_linprobe.err
+diff --git a/scripts/bmae_eval_linear_layer_9_time_3.sh b/scripts/bmae_eval_linear_layer_9_time_3.sh
+deleted file mode 100644
+index 74f4311..0000000
+--- a/scripts/bmae_eval_linear_layer_9_time_3.sh
++++ /dev/null
+@@ -1,36 +0,0 @@
+-#!/bin/bash
+-LAYER=9
+-TIMES=3
+-BATCH_SIZE=16384
+-PRETRAIN_CKPT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}/checkpoint-199.pth
+-BLR=0.1
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/bmae_linprobe_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_linprobe_layer_${LAYER}_time_${TIMES}
+-
+-NUM_GPUS=8
+-MASTER_PORT=29501  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_linprobe.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --finetune ${PRETRAIN_CKPT} \
+-    --nb_classes $NUM_CLASSES \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.0 \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_time_${TIMES}_linprobe.log \
+-    2> log/bmae_linprobe/bmae_pretrain_layer_${LAYER}_time_${TIMES}_linprobe.err
+diff --git a/scripts/bmae_train_debug.sh b/scripts/bmae_train_debug.sh
+deleted file mode 100644
+index 510629a..0000000
+--- a/scripts/bmae_train_debug.sh
++++ /dev/null
+@@ -1,41 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-ACCUM_ITER=2
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-LOG=tensorboard/mae_pretrain
+-OUTPUT=checkpoints/bmae_pretrain
+-BASE_MODEL=checkpoints/mae_pretrain/checkpoint-199.pth
+-TIMES=3
+-LAYER=6
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29500  # Change if needed
+-NORM_PIX_LOSS=False
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-# Launch Distributed Data Parallel (DDP) training
+-CUDA_VISIBLE_DEVICES=0 python main_pretrain_bootstrap.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --base_model $BASE_MODEL \
+-    --select_layer $LAYER \
+-    --bootstrap_times $TIMES \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --norm_pix_loss \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    # 1> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_TIMES_${TIMES}.log \
+-    # 2> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_TIMES_${TIMES}.err
+diff --git a/scripts/bmae_train_ema_decay_09999_warm_20_layer_11.sh b/scripts/bmae_train_ema_decay_09999_warm_20_layer_11.sh
+deleted file mode 100644
+index 2434347..0000000
+--- a/scripts/bmae_train_ema_decay_09999_warm_20_layer_11.sh
++++ /dev/null
+@@ -1,47 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-EMA_WARMUP=20
+-EMA_DECAY=0.9999
+-ACCUM_ITER=1
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-BASE_MODEL=checkpoints/mae_pretrain/checkpoint-199.pth
+-LAYER=11
+-LOG=tensorboard/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29536  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-# Launch Distributed Data Parallel (DDP) training
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_pretrain_bootstrap_ema.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --base_model $BASE_MODEL \
+-    --select_layer $LAYER \
+-    --model_ema \
+-    --model_ema_decay $EMA_DECAY \
+-    --model_ema_dynamic \
+-    --ema_warmup_epochs $EMA_WARMUP \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --norm_pix_loss \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}.log \
+-    2> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}.err
+diff --git a/scripts/bmae_train_ema_decay_0999_warm_20.sh b/scripts/bmae_train_ema_decay_0999_warm_20.sh
+deleted file mode 100644
+index 19d3d41..0000000
+--- a/scripts/bmae_train_ema_decay_0999_warm_20.sh
++++ /dev/null
+@@ -1,47 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-EMA_WARMUP=20
+-EMA_DECAY=0.999
+-ACCUM_ITER=1
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-BASE_MODEL=checkpoints/mae_pretrain/checkpoint-199.pth
+-LAYER=6
+-LOG=tensorboard/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29503  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-# Launch Distributed Data Parallel (DDP) training
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_pretrain_bootstrap_ema.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --base_model $BASE_MODEL \
+-    --select_layer $LAYER \
+-    --model_ema \
+-    --model_ema_decay $EMA_DECAY \
+-    --model_ema_dynamic \
+-    --ema_warmup_epochs $EMA_WARMUP \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --norm_pix_loss \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}.log \
+-    2> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}.err
+diff --git a/scripts/bmae_train_ema_decay_0999_warm_20_debug.sh b/scripts/bmae_train_ema_decay_0999_warm_20_debug.sh
+deleted file mode 100644
+index 86d3998..0000000
+--- a/scripts/bmae_train_ema_decay_0999_warm_20_debug.sh
++++ /dev/null
+@@ -1,44 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-EMA_WARMUP=20
+-EMA_DECAY=0.999
+-ACCUM_ITER=1
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-BASE_MODEL=checkpoints/mae_pretrain/checkpoint-199.pth
+-LAYER=6
+-LOG=tensorboard/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29503  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-# Launch Distributed Data Parallel (DDP) training
+-CUDA_VISIBLE_DEVICES=0 python main_pretrain_bootstrap_ema.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --base_model $BASE_MODEL \
+-    --select_layer $LAYER \
+-    --model_ema_decay $EMA_DECAY \
+-    --model_ema \
+-    --model_ema_dynamic \
+-    --ema_warmup_epochs $EMA_WARMUP \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --norm_pix_loss \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    # 1> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}.log \
+-    # 2> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}.err
+diff --git a/scripts/bmae_train_ema_decay_0999_warm_20_layer_11.sh b/scripts/bmae_train_ema_decay_0999_warm_20_layer_11.sh
+deleted file mode 100644
+index 24ad8cc..0000000
+--- a/scripts/bmae_train_ema_decay_0999_warm_20_layer_11.sh
++++ /dev/null
+@@ -1,47 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-EMA_WARMUP=20
+-EMA_DECAY=0.999
+-ACCUM_ITER=1
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-BASE_MODEL=checkpoints/mae_pretrain/checkpoint-199.pth
+-LAYER=11
+-LOG=tensorboard/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29526  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-# Launch Distributed Data Parallel (DDP) training
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_pretrain_bootstrap_ema.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --base_model $BASE_MODEL \
+-    --select_layer $LAYER \
+-    --model_ema \
+-    --model_ema_decay $EMA_DECAY \
+-    --model_ema_dynamic \
+-    --ema_warmup_epochs $EMA_WARMUP \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --norm_pix_loss \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}.log \
+-    2> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}.err
+diff --git a/scripts/bmae_train_ema_decay_0999_warm_20_layer_3.sh b/scripts/bmae_train_ema_decay_0999_warm_20_layer_3.sh
+deleted file mode 100644
+index d53f0d0..0000000
+--- a/scripts/bmae_train_ema_decay_0999_warm_20_layer_3.sh
++++ /dev/null
+@@ -1,47 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-EMA_WARMUP=20
+-EMA_DECAY=0.999
+-ACCUM_ITER=1
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-BASE_MODEL=checkpoints/mae_pretrain/checkpoint-199.pth
+-LAYER=3
+-LOG=tensorboard/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29513  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-# Launch Distributed Data Parallel (DDP) training
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_pretrain_bootstrap_ema.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --base_model $BASE_MODEL \
+-    --select_layer $LAYER \
+-    --model_ema \
+-    --model_ema_decay $EMA_DECAY \
+-    --model_ema_dynamic \
+-    --ema_warmup_epochs $EMA_WARMUP \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --norm_pix_loss \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}.log \
+-    2> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}.err
+diff --git a/scripts/bmae_train_ema_decay_0999_warm_20_layer_9.sh b/scripts/bmae_train_ema_decay_0999_warm_20_layer_9.sh
+deleted file mode 100644
+index d594ae9..0000000
+--- a/scripts/bmae_train_ema_decay_0999_warm_20_layer_9.sh
++++ /dev/null
+@@ -1,47 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-EMA_WARMUP=20
+-EMA_DECAY=0.999
+-ACCUM_ITER=1
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-BASE_MODEL=checkpoints/mae_pretrain/checkpoint-199.pth
+-LAYER=9
+-LOG=tensorboard/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29523  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-# Launch Distributed Data Parallel (DDP) training
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_pretrain_bootstrap_ema.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --base_model $BASE_MODEL \
+-    --select_layer $LAYER \
+-    --model_ema \
+-    --model_ema_decay $EMA_DECAY \
+-    --model_ema_dynamic \
+-    --ema_warmup_epochs $EMA_WARMUP \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --norm_pix_loss \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}.log \
+-    2> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}.err
+diff --git a/scripts/bmae_train_ema_decay_099_warm_10_layer_11.sh b/scripts/bmae_train_ema_decay_099_warm_10_layer_11.sh
+deleted file mode 100644
+index ee1ac58..0000000
+--- a/scripts/bmae_train_ema_decay_099_warm_10_layer_11.sh
++++ /dev/null
+@@ -1,47 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-EMA_WARMUP=10
+-EMA_DECAY=0.99
+-ACCUM_ITER=1
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-BASE_MODEL=checkpoints/mae_pretrain/checkpoint-199.pth
+-LAYER=11
+-LOG=tensorboard/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29534  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-# Launch Distributed Data Parallel (DDP) training
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_pretrain_bootstrap_ema.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --base_model $BASE_MODEL \
+-    --select_layer $LAYER \
+-    --model_ema \
+-    --model_ema_decay $EMA_DECAY \
+-    --model_ema_dynamic \
+-    --ema_warmup_epochs $EMA_WARMUP \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --norm_pix_loss \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}.log \
+-    2> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}.err
+diff --git a/scripts/bmae_train_ema_decay_099_warm_1_layer_11.sh b/scripts/bmae_train_ema_decay_099_warm_1_layer_11.sh
+deleted file mode 100644
+index d9ffd12..0000000
+--- a/scripts/bmae_train_ema_decay_099_warm_1_layer_11.sh
++++ /dev/null
+@@ -1,47 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-EMA_WARMUP=1
+-EMA_DECAY=0.99
+-ACCUM_ITER=1
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-BASE_MODEL=checkpoints/mae_pretrain/checkpoint-199.pth
+-LAYER=11
+-LOG=tensorboard/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29524  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-# Launch Distributed Data Parallel (DDP) training
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_pretrain_bootstrap_ema.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --base_model $BASE_MODEL \
+-    --select_layer $LAYER \
+-    --model_ema \
+-    --model_ema_decay $EMA_DECAY \
+-    --model_ema_dynamic \
+-    --ema_warmup_epochs $EMA_WARMUP \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --norm_pix_loss \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}.log \
+-    2> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}.err
+diff --git a/scripts/bmae_train_ema_decay_099_warm_20_layer_11.sh b/scripts/bmae_train_ema_decay_099_warm_20_layer_11.sh
+deleted file mode 100644
+index 2bc8290..0000000
+--- a/scripts/bmae_train_ema_decay_099_warm_20_layer_11.sh
++++ /dev/null
+@@ -1,47 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-EMA_WARMUP=20
+-EMA_DECAY=0.99
+-ACCUM_ITER=1
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-BASE_MODEL=checkpoints/mae_pretrain/checkpoint-199.pth
+-LAYER=11
+-LOG=tensorboard/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29525  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-# Launch Distributed Data Parallel (DDP) training
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_pretrain_bootstrap_ema.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --base_model $BASE_MODEL \
+-    --select_layer $LAYER \
+-    --model_ema \
+-    --model_ema_decay $EMA_DECAY \
+-    --model_ema_dynamic \
+-    --ema_warmup_epochs $EMA_WARMUP \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --norm_pix_loss \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}.log \
+-    2> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}.err
+diff --git a/scripts/bmae_train_ema_decay_09_warm_20_layer_11.sh b/scripts/bmae_train_ema_decay_09_warm_20_layer_11.sh
+deleted file mode 100644
+index a4ffcde..0000000
+--- a/scripts/bmae_train_ema_decay_09_warm_20_layer_11.sh
++++ /dev/null
+@@ -1,47 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-EMA_WARMUP=20
+-EMA_DECAY=0.9
+-ACCUM_ITER=1
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-BASE_MODEL=checkpoints/mae_pretrain/checkpoint-199.pth
+-LAYER=11
+-LOG=tensorboard/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-OUTPUT=checkpoints/bmae_pretrain_layer_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29524  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-# Launch Distributed Data Parallel (DDP) training
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_pretrain_bootstrap_ema.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --base_model $BASE_MODEL \
+-    --select_layer $LAYER \
+-    --model_ema \
+-    --model_ema_decay $EMA_DECAY \
+-    --model_ema_dynamic \
+-    --ema_warmup_epochs $EMA_WARMUP \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --norm_pix_loss \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}.log \
+-    2> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_ema_warmup_${EMA_WARMUP}_decay_${EMA_DECAY}.err
+diff --git a/scripts/bmae_train_layer_11_time_3.sh b/scripts/bmae_train_layer_11_time_3.sh
+deleted file mode 100644
+index bccc3c1..0000000
+--- a/scripts/bmae_train_layer_11_time_3.sh
++++ /dev/null
+@@ -1,43 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-ACCUM_ITER=1
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-BASE_MODEL=checkpoints/mae_pretrain/checkpoint-199.pth
+-TIMES=3
+-LAYER=11
+-LOG=tensorboard/bmae_pretrain_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29511  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-# Launch Distributed Data Parallel (DDP) training
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_pretrain_bootstrap.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --base_model $BASE_MODEL \
+-    --select_layer $LAYER \
+-    --bootstrap_times $TIMES \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --norm_pix_loss \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_TIMES_${TIMES}.log \
+-    2> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_TIMES_${TIMES}.err
+diff --git a/scripts/bmae_train_layer_1_time_3.sh b/scripts/bmae_train_layer_1_time_3.sh
+deleted file mode 100644
+index 4b5c7d3..0000000
+--- a/scripts/bmae_train_layer_1_time_3.sh
++++ /dev/null
+@@ -1,43 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-ACCUM_ITER=1
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-BASE_MODEL=checkpoints/mae_pretrain/checkpoint-199.pth
+-TIMES=3
+-LAYER=1
+-LOG=tensorboard/bmae_pretrain_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29501  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-# Launch Distributed Data Parallel (DDP) training
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_pretrain_bootstrap.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --base_model $BASE_MODEL \
+-    --select_layer $LAYER \
+-    --bootstrap_times $TIMES \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --norm_pix_loss \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_TIMES_${TIMES}.log \
+-    2> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_TIMES_${TIMES}.err
+diff --git a/scripts/bmae_train_layer_3_time_3.sh b/scripts/bmae_train_layer_3_time_3.sh
+deleted file mode 100644
+index 922b6b4..0000000
+--- a/scripts/bmae_train_layer_3_time_3.sh
++++ /dev/null
+@@ -1,43 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-ACCUM_ITER=1
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-BASE_MODEL=checkpoints/mae_pretrain/checkpoint-199.pth
+-TIMES=3
+-LAYER=3
+-LOG=tensorboard/bmae_pretrain_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29501  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-# Launch Distributed Data Parallel (DDP) training
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_pretrain_bootstrap.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --base_model $BASE_MODEL \
+-    --select_layer $LAYER \
+-    --bootstrap_times $TIMES \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --norm_pix_loss \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_TIMES_${TIMES}.log \
+-    2> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_TIMES_${TIMES}.err
+diff --git a/scripts/bmae_train_layer_6_time_1.sh b/scripts/bmae_train_layer_6_time_1.sh
+deleted file mode 100644
+index a79241c..0000000
+--- a/scripts/bmae_train_layer_6_time_1.sh
++++ /dev/null
+@@ -1,43 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-ACCUM_ITER=1
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-BASE_MODEL=checkpoints/mae_pretrain/checkpoint-199.pth
+-TIMES=1
+-LAYER=6
+-LOG=tensorboard/bmae_pretrain_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29503  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-# Launch Distributed Data Parallel (DDP) training
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_pretrain_bootstrap.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --base_model $BASE_MODEL \
+-    --select_layer $LAYER \
+-    --bootstrap_times $TIMES \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --norm_pix_loss \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_TIMES_${TIMES}.log \
+-    2> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_TIMES_${TIMES}.err
+diff --git a/scripts/bmae_train_layer_6_time_10.sh b/scripts/bmae_train_layer_6_time_10.sh
+deleted file mode 100644
+index 8ffcabc..0000000
+--- a/scripts/bmae_train_layer_6_time_10.sh
++++ /dev/null
+@@ -1,43 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-ACCUM_ITER=1
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-BASE_MODEL=checkpoints/mae_pretrain/checkpoint-199.pth
+-TIMES=10
+-LAYER=6
+-LOG=tensorboard/bmae_pretrain_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29503  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-# Launch Distributed Data Parallel (DDP) training
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_pretrain_bootstrap.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --base_model $BASE_MODEL \
+-    --select_layer $LAYER \
+-    --bootstrap_times $TIMES \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --norm_pix_loss \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_TIMES_${TIMES}.log \
+-    2> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_TIMES_${TIMES}.err
+diff --git a/scripts/bmae_train_layer_6_time_3.sh b/scripts/bmae_train_layer_6_time_3.sh
+deleted file mode 100644
+index 9733428..0000000
+--- a/scripts/bmae_train_layer_6_time_3.sh
++++ /dev/null
+@@ -1,43 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-ACCUM_ITER=1
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-BASE_MODEL=checkpoints/mae_pretrain/checkpoint-199.pth
+-TIMES=3
+-LAYER=6
+-LOG=tensorboard/bmae_pretrain_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29500  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-# Launch Distributed Data Parallel (DDP) training
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_pretrain_bootstrap.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --base_model $BASE_MODEL \
+-    --select_layer $LAYER \
+-    --bootstrap_times $TIMES \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --norm_pix_loss \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_TIMES_${TIMES}.log \
+-    2> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_TIMES_${TIMES}.err
+diff --git a/scripts/bmae_train_layer_6_time_3_wonorm.sh b/scripts/bmae_train_layer_6_time_3_wonorm.sh
+deleted file mode 100644
+index 6721bd1..0000000
+--- a/scripts/bmae_train_layer_6_time_3_wonorm.sh
++++ /dev/null
+@@ -1,42 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-ACCUM_ITER=1
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-BASE_MODEL=checkpoints/mae_pretrain/checkpoint-199.pth
+-TIMES=3
+-LAYER=6
+-LOG=tensorboard/bmae_pretrain_layer_${LAYER}_time_${TIMES}_wonorm
+-OUTPUT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}_wonorm
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29510  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-# Launch Distributed Data Parallel (DDP) training
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_pretrain_bootstrap.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --base_model $BASE_MODEL \
+-    --select_layer $LAYER \
+-    --bootstrap_times $TIMES \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_TIMES_${TIMES}_wonorm.log \
+-    2> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_TIMES_${TIMES}_wonorm.err
+diff --git a/scripts/bmae_train_layer_6_time_5.sh b/scripts/bmae_train_layer_6_time_5.sh
+deleted file mode 100644
+index dcefa25..0000000
+--- a/scripts/bmae_train_layer_6_time_5.sh
++++ /dev/null
+@@ -1,43 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-ACCUM_ITER=1
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-BASE_MODEL=checkpoints/mae_pretrain/checkpoint-199.pth
+-TIMES=5
+-LAYER=6
+-LOG=tensorboard/bmae_pretrain_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29503  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-# Launch Distributed Data Parallel (DDP) training
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_pretrain_bootstrap.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --base_model $BASE_MODEL \
+-    --select_layer $LAYER \
+-    --bootstrap_times $TIMES \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --norm_pix_loss \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_TIMES_${TIMES}.log \
+-    2> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_TIMES_${TIMES}.err
+diff --git a/scripts/bmae_train_layer_9_time_3.sh b/scripts/bmae_train_layer_9_time_3.sh
+deleted file mode 100644
+index ba51691..0000000
+--- a/scripts/bmae_train_layer_9_time_3.sh
++++ /dev/null
+@@ -1,43 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-ACCUM_ITER=1
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-BASE_MODEL=checkpoints/mae_pretrain/checkpoint-199.pth
+-TIMES=3
+-LAYER=9
+-LOG=tensorboard/bmae_pretrain_layer_${LAYER}_time_${TIMES}
+-OUTPUT=checkpoints/bmae_pretrain_layer_${LAYER}_time_${TIMES}
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29502  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-# Launch Distributed Data Parallel (DDP) training
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_pretrain_bootstrap.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --base_model $BASE_MODEL \
+-    --select_layer $LAYER \
+-    --bootstrap_times $TIMES \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --norm_pix_loss \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_TIMES_${TIMES}.log \
+-    2> log/bmae_train/pretrain_bootstrap_LAYER_${LAYER}_TIMES_${TIMES}.err
+diff --git a/scripts/mae_eval_finetune.sh b/scripts/mae_eval_finetune.sh
+deleted file mode 100644
+index 4b2d5ec..0000000
+--- a/scripts/mae_eval_finetune.sh
++++ /dev/null
+@@ -1,39 +0,0 @@
+-#!/bin/bash
+-
+-BATCH_SIZE=1024
+-PRETRAIN_CKPT=checkpoints/mae_pretrain/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch4
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/mae_finetune
+-OUTPUT=checkpoints/mae_finetune
+-
+-NUM_GPUS=8
+-MASTER_PORT=29500  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --finetune $PRETRAIN_CKPT \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/mae_finetune/base_pretrain_finetune.log \
+-    2> log/mae_finetune/base_pretrain_finetune.err
+\ No newline at end of file
+diff --git a/scripts/mae_eval_finetune_wopretrain.sh b/scripts/mae_eval_finetune_wopretrain.sh
+deleted file mode 100644
+index 20c1f3b..0000000
+--- a/scripts/mae_eval_finetune_wopretrain.sh
++++ /dev/null
+@@ -1,38 +0,0 @@
+-#!/bin/bash
+-
+-BATCH_SIZE=128
+-PRETRAIN_CKPT=checkpoints/mae_pretrain/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch16
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/mae_finetune_wopretrain
+-OUTPUT=checkpoints/mae_finetune_wopretrain
+-
+-NUM_GPUS=8
+-MASTER_PORT=29501  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT \
+-    1> log/mae_finetune/wopretrain_finetune.log \
+-    2> log/mae_finetune/wopretrain_finetune.err
+\ No newline at end of file
+diff --git a/scripts/mae_eval_finetune_wopretrain_debug.sh b/scripts/mae_eval_finetune_wopretrain_debug.sh
+deleted file mode 100644
+index 3d96166..0000000
+--- a/scripts/mae_eval_finetune_wopretrain_debug.sh
++++ /dev/null
+@@ -1,33 +0,0 @@
+-#!/bin/bash
+-
+-BATCH_SIZE=128
+-PRETRAIN_CHKPT=checkpoints/mae_pretrain/checkpoint-199.pth
+-BLR=1e-3 # follow vit-base
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch16
+-INPUT_SIZE=32
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/mae_finetune_wopretrain
+-OUTPUT=checkpoints/mae_finetune_wopretrain
+-
+-NUM_GPUS=1
+-MASTER_PORT=29501  # Change if needed
+-SMOOTHING=0.0
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-CUDA_VISIBLE_DEVICES=0 python main_finetune.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --input_size $INPUT_SIZE \
+-    --nb_classes $NUM_CLASSES \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.05 \
+-    --log_dir $LOG \
+-    --smoothing $SMOOTHING \
+-    --output_dir $OUTPUT 
+\ No newline at end of file
+diff --git a/scripts/mae_eval_linear.sh b/scripts/mae_eval_linear.sh
+deleted file mode 100644
+index 9a430e9..0000000
+--- a/scripts/mae_eval_linear.sh
++++ /dev/null
+@@ -1,35 +0,0 @@
+-#!/bin/bash
+-
+-BATCH_SIZE=16384
+-PRETRAIN_CHKPT=checkpoints/mae_pretrain/checkpoint-199.pth
+-BLR=0.1
+-EPOCHS=100
+-MODEL=vit_tiny_img32_patch16
+-NUM_CLASSES=10
+-
+-DATA=data
+-LOG=tensorboard/mae_linprobe
+-OUTPUT=checkpoints/mae_linprobe
+-
+-NUM_GPUS=8
+-MASTER_PORT=29502  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_linprobe.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --model $MODEL --cls_token \
+-    --finetune ${PRETRAIN_CHKPT} \
+-    --nb_classes $NUM_CLASSES \
+-    --data_path $DATA \
+-    --epochs $EPOCHS \
+-    --blr $BLR \
+-    --weight_decay 0.0 \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/mae_linprobe/base_pretrain_linprobe.log \
+-    2> log/mae_linprobe/base_pretrain_linprobe.err
+diff --git a/scripts/mae_train.sh b/scripts/mae_train.sh
+deleted file mode 100644
+index 2f52d38..0000000
+--- a/scripts/mae_train.sh
++++ /dev/null
+@@ -1,38 +0,0 @@
+-#!/bin/bash
+-
+-# Training parameters
+-BATCH_SIZE=4096
+-EPOCHS=200
+-ACCUM_ITER=1
+-MODEL=mae_vit_tiny_img32_patch4_dec512d8b
+-MASK_RATIO=0.75
+-BLR=1.5e-4
+-WEIGHT_DECAY=0.05
+-DATA=data
+-LOG=tensorboard/mae_pretrain
+-OUTPUT=checkpoints/mae_pretrain
+-
+-# Set the number of GPUs
+-NUM_GPUS=8
+-MASTER_PORT=29500  # Change if needed
+-
+-# Compute per-GPU batch size
+-PER_GPU_BATCH_SIZE=$((BATCH_SIZE / NUM_GPUS))
+-
+-# Launch Distributed Data Parallel (DDP) training
+-python -m torch.distributed.launch \
+-    --nproc_per_node=$NUM_GPUS \
+-    --master_port=$MASTER_PORT \
+-    main_pretrain.py \
+-    --batch_size $PER_GPU_BATCH_SIZE \
+-    --epochs $EPOCHS \
+-    --accum_iter $ACCUM_ITER \
+-    --model $MODEL \
+-    --mask_ratio $MASK_RATIO \
+-    --blr $BLR \
+-    --weight_decay $WEIGHT_DECAY \
+-    --data_path $DATA \
+-    --log_dir $LOG \
+-    --output_dir $OUTPUT \
+-    1> log/mae_train/base_pretrain.log \
+-    2> log/mae_train/base_pretrain.err
+diff --git a/submitit_finetune.py b/submitit_finetune.py
+new file mode 100644
+index 0000000..cce5883
+--- /dev/null
++++ b/submitit_finetune.py
+@@ -0,0 +1,131 @@
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++# All rights reserved.
++
++# This source code is licensed under the license found in the
++# LICENSE file in the root directory of this source tree.
++# --------------------------------------------------------
++# A script to run multinode training with submitit.
++# --------------------------------------------------------
++
++import argparse
++import os
++import uuid
++from pathlib import Path
++
++import main_finetune as classification
++import submitit
++
++
++def parse_args():
++    classification_parser = classification.get_args_parser()
++    parser = argparse.ArgumentParser("Submitit for MAE finetune", parents=[classification_parser])
++    parser.add_argument("--ngpus", default=8, type=int, help="Number of gpus to request on each node")
++    parser.add_argument("--nodes", default=2, type=int, help="Number of nodes to request")
++    parser.add_argument("--timeout", default=4320, type=int, help="Duration of the job")
++    parser.add_argument("--job_dir", default="", type=str, help="Job dir. Leave empty for automatic.")
++
++    parser.add_argument("--partition", default="learnfair", type=str, help="Partition where to submit")
++    parser.add_argument("--use_volta32", action='store_true', help="Request 32G V100 GPUs")
++    parser.add_argument('--comment', default="", type=str, help="Comment to pass to scheduler")
++    return parser.parse_args()
++
++
++def get_shared_folder() -> Path:
++    user = os.getenv("USER")
++    if Path("/checkpoint/").is_dir():
++        p = Path(f"/checkpoint/{user}/experiments")
++        p.mkdir(exist_ok=True)
++        return p
++    raise RuntimeError("No shared folder available")
++
++
++def get_init_file():
++    # Init file must not exist, but it's parent dir must exist.
++    os.makedirs(str(get_shared_folder()), exist_ok=True)
++    init_file = get_shared_folder() / f"{uuid.uuid4().hex}_init"
++    if init_file.exists():
++        os.remove(str(init_file))
++    return init_file
++
++
++class Trainer(object):
++    def __init__(self, args):
++        self.args = args
++
++    def __call__(self):
++        import main_finetune as classification
++
++        self._setup_gpu_args()
++        classification.main(self.args)
++
++    def checkpoint(self):
++        import os
++        import submitit
++
++        self.args.dist_url = get_init_file().as_uri()
++        checkpoint_file = os.path.join(self.args.output_dir, "checkpoint.pth")
++        if os.path.exists(checkpoint_file):
++            self.args.resume = checkpoint_file
++        print("Requeuing ", self.args)
++        empty_trainer = type(self)(self.args)
++        return submitit.helpers.DelayedSubmission(empty_trainer)
++
++    def _setup_gpu_args(self):
++        import submitit
++        from pathlib import Path
++
++        job_env = submitit.JobEnvironment()
++        self.args.output_dir = Path(str(self.args.output_dir).replace("%j", str(job_env.job_id)))
++        self.args.log_dir = self.args.output_dir
++        self.args.gpu = job_env.local_rank
++        self.args.rank = job_env.global_rank
++        self.args.world_size = job_env.num_tasks
++        print(f"Process group: {job_env.num_tasks} tasks, rank: {job_env.global_rank}")
++
++
++def main():
++    args = parse_args()
++    if args.job_dir == "":
++        args.job_dir = get_shared_folder() / "%j"
++
++    # Note that the folder will depend on the job_id, to easily track experiments
++    executor = submitit.AutoExecutor(folder=args.job_dir, slurm_max_num_timeout=30)
++
++    num_gpus_per_node = args.ngpus
++    nodes = args.nodes
++    timeout_min = args.timeout
++
++    partition = args.partition
++    kwargs = {}
++    if args.use_volta32:
++        kwargs['slurm_constraint'] = 'volta32gb'
++    if args.comment:
++        kwargs['slurm_comment'] = args.comment
++
++    executor.update_parameters(
++        mem_gb=40 * num_gpus_per_node,
++        gpus_per_node=num_gpus_per_node,
++        tasks_per_node=num_gpus_per_node, # one task per GPU
++        cpus_per_task=10,
++        nodes=nodes,
++        timeout_min=timeout_min,
++        # Below are cluster dependent parameters
++        slurm_partition=partition,
++        slurm_signal_delay_s=120,
++        **kwargs
++    )
++
++    executor.update_parameters(name="mae")
++
++    args.dist_url = get_init_file().as_uri()
++    args.output_dir = args.job_dir
++
++    trainer = Trainer(args)
++    job = executor.submit(trainer)
++
++    # print("Submitted job_id:", job.job_id)
++    print(job.job_id)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/submitit_linprobe.py b/submitit_linprobe.py
+new file mode 100644
+index 0000000..571186d
+--- /dev/null
++++ b/submitit_linprobe.py
+@@ -0,0 +1,131 @@
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++# All rights reserved.
++
++# This source code is licensed under the license found in the
++# LICENSE file in the root directory of this source tree.
++# --------------------------------------------------------
++# A script to run multinode training with submitit.
++# --------------------------------------------------------
++
++import argparse
++import os
++import uuid
++from pathlib import Path
++
++import main_linprobe as classification
++import submitit
++
++
++def parse_args():
++    classification_parser = classification.get_args_parser()
++    parser = argparse.ArgumentParser("Submitit for MAE linear probe", parents=[classification_parser])
++    parser.add_argument("--ngpus", default=8, type=int, help="Number of gpus to request on each node")
++    parser.add_argument("--nodes", default=2, type=int, help="Number of nodes to request")
++    parser.add_argument("--timeout", default=4320, type=int, help="Duration of the job")
++    parser.add_argument("--job_dir", default="", type=str, help="Job dir. Leave empty for automatic.")
++
++    parser.add_argument("--partition", default="learnfair", type=str, help="Partition where to submit")
++    parser.add_argument("--use_volta32", action='store_true', help="Request 32G V100 GPUs")
++    parser.add_argument('--comment', default="", type=str, help="Comment to pass to scheduler")
++    return parser.parse_args()
++
++
++def get_shared_folder() -> Path:
++    user = os.getenv("USER")
++    if Path("/checkpoint/").is_dir():
++        p = Path(f"/checkpoint/{user}/experiments")
++        p.mkdir(exist_ok=True)
++        return p
++    raise RuntimeError("No shared folder available")
++
++
++def get_init_file():
++    # Init file must not exist, but it's parent dir must exist.
++    os.makedirs(str(get_shared_folder()), exist_ok=True)
++    init_file = get_shared_folder() / f"{uuid.uuid4().hex}_init"
++    if init_file.exists():
++        os.remove(str(init_file))
++    return init_file
++
++
++class Trainer(object):
++    def __init__(self, args):
++        self.args = args
++
++    def __call__(self):
++        import main_linprobe as classification
++
++        self._setup_gpu_args()
++        classification.main(self.args)
++
++    def checkpoint(self):
++        import os
++        import submitit
++
++        self.args.dist_url = get_init_file().as_uri()
++        checkpoint_file = os.path.join(self.args.output_dir, "checkpoint.pth")
++        if os.path.exists(checkpoint_file):
++            self.args.resume = checkpoint_file
++        print("Requeuing ", self.args)
++        empty_trainer = type(self)(self.args)
++        return submitit.helpers.DelayedSubmission(empty_trainer)
++
++    def _setup_gpu_args(self):
++        import submitit
++        from pathlib import Path
++
++        job_env = submitit.JobEnvironment()
++        self.args.output_dir = Path(str(self.args.output_dir).replace("%j", str(job_env.job_id)))
++        self.args.log_dir = self.args.output_dir
++        self.args.gpu = job_env.local_rank
++        self.args.rank = job_env.global_rank
++        self.args.world_size = job_env.num_tasks
++        print(f"Process group: {job_env.num_tasks} tasks, rank: {job_env.global_rank}")
++
++
++def main():
++    args = parse_args()
++    if args.job_dir == "":
++        args.job_dir = get_shared_folder() / "%j"
++
++    # Note that the folder will depend on the job_id, to easily track experiments
++    executor = submitit.AutoExecutor(folder=args.job_dir, slurm_max_num_timeout=30)
++
++    num_gpus_per_node = args.ngpus
++    nodes = args.nodes
++    timeout_min = args.timeout
++
++    partition = args.partition
++    kwargs = {}
++    if args.use_volta32:
++        kwargs['slurm_constraint'] = 'volta32gb'
++    if args.comment:
++        kwargs['slurm_comment'] = args.comment
++
++    executor.update_parameters(
++        mem_gb=40 * num_gpus_per_node,
++        gpus_per_node=num_gpus_per_node,
++        tasks_per_node=num_gpus_per_node, # one task per GPU
++        cpus_per_task=10,
++        nodes=nodes,
++        timeout_min=timeout_min,
++        # Below are cluster dependent parameters
++        slurm_partition=partition,
++        slurm_signal_delay_s=120,
++        **kwargs
++    )
++
++    executor.update_parameters(name="mae")
++
++    args.dist_url = get_init_file().as_uri()
++    args.output_dir = args.job_dir
++
++    trainer = Trainer(args)
++    job = executor.submit(trainer)
++
++    # print("Submitted job_id:", job.job_id)
++    print(job.job_id)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/submitit_pretrain.py b/submitit_pretrain.py
+new file mode 100644
+index 0000000..384b8ad
+--- /dev/null
++++ b/submitit_pretrain.py
+@@ -0,0 +1,131 @@
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++# All rights reserved.
++
++# This source code is licensed under the license found in the
++# LICENSE file in the root directory of this source tree.
++# --------------------------------------------------------
++# A script to run multinode training with submitit.
++# --------------------------------------------------------
++
++import argparse
++import os
++import uuid
++from pathlib import Path
++
++import main_pretrain as trainer
++import submitit
++
++
++def parse_args():
++    trainer_parser = trainer.get_args_parser()
++    parser = argparse.ArgumentParser("Submitit for MAE pretrain", parents=[trainer_parser])
++    parser.add_argument("--ngpus", default=8, type=int, help="Number of gpus to request on each node")
++    parser.add_argument("--nodes", default=2, type=int, help="Number of nodes to request")
++    parser.add_argument("--timeout", default=4320, type=int, help="Duration of the job")
++    parser.add_argument("--job_dir", default="", type=str, help="Job dir. Leave empty for automatic.")
++
++    parser.add_argument("--partition", default="learnfair", type=str, help="Partition where to submit")
++    parser.add_argument("--use_volta32", action='store_true', help="Request 32G V100 GPUs")
++    parser.add_argument('--comment', default="", type=str, help="Comment to pass to scheduler")
++    return parser.parse_args()
++
++
++def get_shared_folder() -> Path:
++    user = os.getenv("USER")
++    if Path("/checkpoint/").is_dir():
++        p = Path(f"/checkpoint/{user}/experiments")
++        p.mkdir(exist_ok=True)
++        return p
++    raise RuntimeError("No shared folder available")
++
++
++def get_init_file():
++    # Init file must not exist, but it's parent dir must exist.
++    os.makedirs(str(get_shared_folder()), exist_ok=True)
++    init_file = get_shared_folder() / f"{uuid.uuid4().hex}_init"
++    if init_file.exists():
++        os.remove(str(init_file))
++    return init_file
++
++
++class Trainer(object):
++    def __init__(self, args):
++        self.args = args
++
++    def __call__(self):
++        import main_pretrain as trainer
++
++        self._setup_gpu_args()
++        trainer.main(self.args)
++
++    def checkpoint(self):
++        import os
++        import submitit
++
++        self.args.dist_url = get_init_file().as_uri()
++        checkpoint_file = os.path.join(self.args.output_dir, "checkpoint.pth")
++        if os.path.exists(checkpoint_file):
++            self.args.resume = checkpoint_file
++        print("Requeuing ", self.args)
++        empty_trainer = type(self)(self.args)
++        return submitit.helpers.DelayedSubmission(empty_trainer)
++
++    def _setup_gpu_args(self):
++        import submitit
++        from pathlib import Path
++
++        job_env = submitit.JobEnvironment()
++        self.args.output_dir = Path(str(self.args.output_dir).replace("%j", str(job_env.job_id)))
++        self.args.log_dir = self.args.output_dir
++        self.args.gpu = job_env.local_rank
++        self.args.rank = job_env.global_rank
++        self.args.world_size = job_env.num_tasks
++        print(f"Process group: {job_env.num_tasks} tasks, rank: {job_env.global_rank}")
++
++
++def main():
++    args = parse_args()
++    if args.job_dir == "":
++        args.job_dir = get_shared_folder() / "%j"
++
++    # Note that the folder will depend on the job_id, to easily track experiments
++    executor = submitit.AutoExecutor(folder=args.job_dir, slurm_max_num_timeout=30)
++
++    num_gpus_per_node = args.ngpus
++    nodes = args.nodes
++    timeout_min = args.timeout
++
++    partition = args.partition
++    kwargs = {}
++    if args.use_volta32:
++        kwargs['slurm_constraint'] = 'volta32gb'
++    if args.comment:
++        kwargs['slurm_comment'] = args.comment
++
++    executor.update_parameters(
++        mem_gb=40 * num_gpus_per_node,
++        gpus_per_node=num_gpus_per_node,
++        tasks_per_node=num_gpus_per_node,  # one task per GPU
++        cpus_per_task=10,
++        nodes=nodes,
++        timeout_min=timeout_min,  # max is 60 * 72
++        # Below are cluster dependent parameters
++        slurm_partition=partition,
++        slurm_signal_delay_s=120,
++        **kwargs
++    )
++
++    executor.update_parameters(name="mae")
++
++    args.dist_url = get_init_file().as_uri()
++    args.output_dir = args.job_dir
++
++    trainer = Trainer(args)
++    job = executor.submit(trainer)
++
++    # print("Submitted job_id:", job.job_id)
++    print(job.job_id)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/util/__pycache__/crop.cpython-38.pyc b/util/__pycache__/crop.cpython-38.pyc
+deleted file mode 100644
+index 44c7400..0000000
+Binary files a/util/__pycache__/crop.cpython-38.pyc and /dev/null differ
+diff --git a/util/__pycache__/datasets.cpython-38.pyc b/util/__pycache__/datasets.cpython-38.pyc
+deleted file mode 100644
+index 1a5a29b..0000000
+Binary files a/util/__pycache__/datasets.cpython-38.pyc and /dev/null differ
+diff --git a/util/__pycache__/ema.cpython-38.pyc b/util/__pycache__/ema.cpython-38.pyc
+deleted file mode 100644
+index 884c6f9..0000000
+Binary files a/util/__pycache__/ema.cpython-38.pyc and /dev/null differ
+diff --git a/util/__pycache__/lars.cpython-38.pyc b/util/__pycache__/lars.cpython-38.pyc
+deleted file mode 100644
+index c5dfdda..0000000
+Binary files a/util/__pycache__/lars.cpython-38.pyc and /dev/null differ
+diff --git a/util/__pycache__/lr_decay.cpython-38.pyc b/util/__pycache__/lr_decay.cpython-38.pyc
+deleted file mode 100644
+index 9574f43..0000000
+Binary files a/util/__pycache__/lr_decay.cpython-38.pyc and /dev/null differ
+diff --git a/util/__pycache__/lr_sched.cpython-38.pyc b/util/__pycache__/lr_sched.cpython-38.pyc
+deleted file mode 100644
+index dd79788..0000000
+Binary files a/util/__pycache__/lr_sched.cpython-38.pyc and /dev/null differ
+diff --git a/util/__pycache__/misc.cpython-38.pyc b/util/__pycache__/misc.cpython-38.pyc
+deleted file mode 100644
+index 9a5468e..0000000
+Binary files a/util/__pycache__/misc.cpython-38.pyc and /dev/null differ
+diff --git a/util/__pycache__/pos_embed.cpython-38.pyc b/util/__pycache__/pos_embed.cpython-38.pyc
+deleted file mode 100644
+index 2630513..0000000
+Binary files a/util/__pycache__/pos_embed.cpython-38.pyc and /dev/null differ
+diff --git a/util/datasets.py b/util/datasets.py
+index 67754fd..0dde1f4 100644
+--- a/util/datasets.py
++++ b/util/datasets.py
+@@ -15,8 +15,6 @@ from torchvision import datasets, transforms
+ 
+ from timm.data import create_transform
+ from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
+-CIFAR10_DEFAULT_MEAN = (0.4914, 0.4822, 0.4465)
+-CIFAR10_DEFAULT_STD = (0.247, 0.243, 0.261)
+ 
+ 
+ def build_dataset(is_train, args):
+@@ -29,15 +27,6 @@ def build_dataset(is_train, args):
+ 
+     return dataset
+ 
+-def build_dataset_cifar10(is_train, args):
+-    transform = build_transform_cifar10(is_train, args)
+-
+-    dataset = datasets.CIFAR10(root=args.data_path, train=is_train, transform=transform, download=True)
+-
+-    print(dataset)
+-
+-    return dataset
+-
+ 
+ def build_transform(is_train, args):
+     mean = IMAGENET_DEFAULT_MEAN
+@@ -74,39 +63,3 @@ def build_transform(is_train, args):
+     t.append(transforms.ToTensor())
+     t.append(transforms.Normalize(mean, std))
+     return transforms.Compose(t)
+-
+-def build_transform_cifar10(is_train, args):
+-    mean = CIFAR10_DEFAULT_MEAN
+-    std = CIFAR10_DEFAULT_STD
+-    # train transform
+-    # if is_train:
+-    #     # this should always dispatch to transforms_imagenet_train
+-    #     transform = create_transform(
+-    #         input_size=args.input_size,
+-    #         is_training=True,
+-    #         color_jitter=args.color_jitter,
+-    #         auto_augment=args.aa,
+-    #         interpolation='bicubic',
+-    #         re_prob=args.reprob,
+-    #         re_mode=args.remode,
+-    #         re_count=args.recount,
+-    #         mean=mean,
+-    #         std=std,
+-    #     )
+-    #     return transform
+-
+-    # eval transform
+-    t = []
+-    # if args.input_size <= 32:
+-    #     crop_pct = 32 / 40 # 0.8
+-    # else:
+-    #     crop_pct = 1.0
+-    # size = int(args.input_size / crop_pct)
+-    # t.append(
+-    #     transforms.Resize(size, interpolation=PIL.Image.BICUBIC),  # to maintain same ratio w.r.t. 224 images
+-    # )
+-    # t.append(transforms.CenterCrop(args.input_size))
+-
+-    t.append(transforms.ToTensor())
+-    t.append(transforms.Normalize(mean, std))
+-    return transforms.Compose(t)
+diff --git a/util/ema.py b/util/ema.py
+deleted file mode 100644
+index 119dc17..0000000
+--- a/util/ema.py
++++ /dev/null
+@@ -1,16 +0,0 @@
+-def adjust_ema_momentum(epoch, args):
+-    if epoch < args.ema_warmup_epochs:
+-        temp_ema_decay = args.model_ema_decay + epoch/args.ema_warmup_epochs * (0.9999 - args.model_ema_decay)
+-    else:
+-        if args.model_ema_dynamic:
+-            temp_ema_decay = 0.9999 + min(args.epochs, epoch-args.ema_warmup_epochs)/args.epochs * (0.99999 - 0.9999)
+-        else:
+-            temp_ema_decay = 0.9999
+-    return temp_ema_decay
+-
+-def adjust_ema_momentum_test(epoch, args):
+-    if epoch < args.ema_warmup_epochs:
+-        temp_ema_decay = args.model_ema_decay * 2/3 + epoch/args.ema_warmup_epochs * args.model_ema_decay * 1/3
+-    else:
+-        temp_ema_decay = args.model_ema_decay
+-    return temp_ema_decay
+\ No newline at end of file
+diff --git a/util/pos_embed.py b/util/pos_embed.py
+index e7da4f8..6acf8bd 100644
+--- a/util/pos_embed.py
++++ b/util/pos_embed.py
+@@ -23,8 +23,8 @@ def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False):
+     return:
+     pos_embed: [grid_size*grid_size, embed_dim] or [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
+     """
+-    grid_h = np.arange(grid_size, dtype=np.float64)
+-    grid_w = np.arange(grid_size, dtype=np.float64)
++    grid_h = np.arange(grid_size, dtype=np.float32)
++    grid_w = np.arange(grid_size, dtype=np.float32)
+     grid = np.meshgrid(grid_w, grid_h)  # here w goes first
+     grid = np.stack(grid, axis=0)
+ 
+@@ -53,7 +53,7 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
+     out: (M, D)
+     """
+     assert embed_dim % 2 == 0
+-    omega = np.arange(embed_dim // 2, dtype=np.float32) # https://github.com/numpy/numpy/issues/25052
++    omega = np.arange(embed_dim // 2, dtype=np.float)
+     omega /= embed_dim / 2.
+     omega = 1. / 10000**omega  # (D/2,)
+ 
+diff --git a/util/viz_loss.py b/util/viz_loss.py
+deleted file mode 100644
+index 0c68c32..0000000
+--- a/util/viz_loss.py
++++ /dev/null
+@@ -1,59 +0,0 @@
+-import os
+-import glob
+-import matplotlib.pyplot as plt
+-from tensorboard.backend.event_processing import event_accumulator
+-
+-def load_scalars_from_event(logdir, tag='loss'):
+-    """Load scalar values (e.g., training loss) from TensorBoard event files."""
+-    event_files = glob.glob(os.path.join(logdir, 'events.out.tfevents.*'))
+-    if not event_files:
+-        print(f"No event files found in {logdir}")
+-        return [], []
+-
+-    # Load the first event file
+-    ea = event_accumulator.EventAccumulator(event_files[0])
+-    ea.Reload()
+-    print(ea.Tags()['scalars'])
+-    if tag not in ea.Tags()['scalars']:
+-        print(f"Tag '{tag}' not found in {logdir}")
+-        return [], []
+-
+-    events = ea.Scalars(tag)
+-    steps = [e.step for e in events]
+-    values = [e.value for e in events]
+-    return steps, values
+-
+-def plot_losses(logdirs, labels, tag='loss', save_path='loss_plot.png'):
+-    plt.figure(figsize=(10, 6))
+-    
+-    for logdir, label in zip(logdirs, labels):
+-        steps, values = load_scalars_from_event(logdir, tag)
+-        if steps:
+-            plt.plot(steps, values, label=label)
+-    
+-    plt.xlabel('Step')
+-    plt.ylabel(tag)
+-    plt.title(f'Training {tag}')
+-    plt.legend()
+-    plt.grid(True)
+-    plt.tight_layout()
+-    plt.savefig(save_path)
+-    print(f"Plot saved to {save_path}")
+-
+-# Example usage:
+-if __name__ == "__main__":
+-    logdirs = [
+-        "tensorboard/bmae_pretrain_layer_6_time_1",  # Replace with your actual paths
+-        "tensorboard/bmae_pretrain_layer_6_time_5",
+-        "tensorboard/bmae_pretrain",
+-        "tensorboard/bmae_pretrain_layer_6_time_10"
+-
+-    ]
+-    labels = [
+-        "time = 1",
+-        "time = 5",
+-        "time = 3",
+-        "time = 10"
+-    ]
+-    tag = "train_loss"  # Replace with your actual scalar tag
+-    plot_losses(logdirs, labels, tag, save_path="comparison_loss_plot.png")
+\ No newline at end of file
